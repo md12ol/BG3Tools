@@ -9,10 +9,8 @@ dist/
 builds/
 # profile backup + code_snapshots zip baselines (git replaces the zips from here on)
 backups/
-# scratch screenshots of the driving scripts (crop/mini/list_now/who.png); the tpl_*.png templates stay tracked
-tools/bg3drive/*.png
-!tools/bg3drive/tpl_*.png
-# loopcap.exe is built from loopcap.cs (tracked)
+# screenshots from tools/testing/screenshot.ps1
+screenshots/
 *.exe
 # python / editor clutter
 __pycache__/

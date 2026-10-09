@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# pre-push: the full local test suite of the repo being pushed, including the tests GitHub CI cannot run because they
+# need game data (LootAdvisor/data/cache, data/items_all, data/scores, the game paks). Runs on the working tree, not
+# on the pushed commits. Missing local data, a missing sibling repo or a runner without --ci is a SKIP (noted), never
+# a failure; only a test that runs and fails refuses the push.
+# The scripts find sibling repos next to their own checkout (../BuildAdvisor). In a git worktree (_wt/<repo>-<topic>)
+# those are absent, so sibling-based checks are skipped there rather than run against the main checkout's files.
+# Installed by setup.sh (core.hooksPath = BG3Tools/hooks). Test: git push --dry-run from any of the repos.
+set -u
+top=$(git rev-parse --show-toplevel) || exit 1
+repo=$(basename "$(git config --get remote.origin.url)" .git)
+parent=$(dirname "$top")                                           # where this checkout's scripts look for siblings
+main_top=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")   # the main worktree
+bg3mods=$(dirname "$main_top")
+py=${PYTHON:-python}
+fails=0
+run() { echo "pre-push [$repo]: $*"; "$@" || { echo "pre-push [$repo]: FAILED: $*"; fails=$((fails + 1)); }; }
+skip() { echo "pre-push [$repo]: skipped: $*"; }
+la_data() { [ -d "$1/data/cache" ] && [ -d "$1/data/scores" ] && [ -d "$1/data/items_all" ]; }
+sib() { [ -d "$parent/$1" ]; }                                      # sibling usable by this checkout's scripts
+where="checkout $top"; [ "$top" != "$main_top" ] && where="worktree $top (main checkout: $main_top, siblings in $bg3mods)"
+echo "pre-push [$repo]: $where"
+
+case "$repo" in
+  LootAdvisor)
+    has_ci=no; grep -q -- '"--ci"' "$top/tests/run.py" 2>/dev/null && has_ci=yes
+    if la_data "$top" && sib BuildAdvisor; then
+      run "$py" "$top/tests/run.py"
+      run "$py" "$top/tests/run.py" --mutate
+    elif [ "$has_ci" = yes ]; then
+      skip "game-data tests (no local data/cache|scores|items_all here, or no ../BuildAdvisor): CI subset only"
+      run "$py" "$top/tests/run.py" --ci
+      run "$py" "$top/tests/run.py" --ci --mutate
+    else
+      skip "tests/run.py: no local game data here and this run.py has no --ci (CI runs them on the PR)"
+    fi
+    if sib BuildAdvisor; then run "$py" "$top/tools/leak_scan.py"; else skip "leak_scan (no ../BuildAdvisor next to this checkout)"; fi
+    if [ -f "$parent/BG3Tools/tools/ci_release.py" ]; then run "$py" "$parent/BG3Tools/tools/ci_release.py" check LootAdvisor
+    else skip "pak/package check (no ../BG3Tools/tools/ci_release.py next to this checkout)"; fi
+    ;;
+  BuildAdvisor)
+    if "$py" -c "import lupa" 2>/dev/null; then run "$py" "$top/tools/run_tests.py"; else skip "mock tests (pip install lupa)"; fi
+    if la_data "$parent/LootAdvisor"; then run "$py" "$top/tools/check_hl.py"; else skip "check_hl.py (no ../LootAdvisor/data/cache next to this checkout)"; fi
+    if [ -f "$parent/LootAdvisor/tools/leak_scan.py" ]; then run "$py" "$parent/LootAdvisor/tools/leak_scan.py"; else skip "leak_scan (no ../LootAdvisor next to this checkout)"; fi
+    if [ -f "$parent/BG3Tools/tools/ci_release.py" ]; then run "$py" "$parent/BG3Tools/tools/ci_release.py" check BuildAdvisor
+    else skip "pak/package check (no ../BG3Tools/tools/ci_release.py next to this checkout)"; fi
+    ;;
+  BG3Tools)
+    for m in LootAdvisor BuildAdvisor; do
+      if sib "$m" && [ -f "$top/tools/ci_release.py" ]; then run "$py" "$top/tools/ci_release.py" check "$m"
+      else skip "$m pak check (no ../$m next to this checkout, or no tools/ci_release.py yet)"; fi
+    done
+    ;;
+  *)
+    skip "no local suite for $repo (CI lints it)"
+    ;;
+esac
+
+if [ "$fails" -gt 0 ]; then
+  echo "pre-push [$repo]: $fails test step(s) failed - push refused. Fix them (or rebuild stale outputs), then push again."
+  exit 1
+fi
+exit 0
