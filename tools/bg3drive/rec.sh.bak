@@ -13,7 +13,7 @@ case "$1" in
     (
       n=1
       while [ -f "$FLAG" ]; do
-        out="C:/Users/micha/Desktop/$2.mp4"; [ $n -gt 1 ] && out="C:/Users/micha/Desktop/$2_part$n.mp4"
+        out="$USERPROFILE/Desktop/$2.mp4"; [ $n -gt 1 ] && out="$USERPROFILE/Desktop/$2_part$n.mp4"
         "$F" -hide_banner -loglevel error -y -f lavfi -i gfxcapture=window_exe=bg3_dx11.exe:max_framerate=60 -vf hwdownload,format=bgra \
           -c:v h264_nvenc -preset p4 -cq 23 -r 60 -movflags +frag_keyframe+empty_moov "$out" < /dev/null >> "$TEMP/bg3rec.log" 2>&1
         n=$((n+1)); sleep 1

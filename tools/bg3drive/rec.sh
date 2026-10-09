@@ -16,7 +16,7 @@
 HERE="$(cd "$(dirname "$0")" && pwd)"
 F="$LOCALAPPDATA/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.2-full_build/bin/ffmpeg.exe"
 FLAG="$TEMP/bg3rec.on"
-DESK="${BG3_REC_DIR:-C:/Users/micha/Desktop/BG3Mods/Autopilot/videos}"   # restructure 2026-10: helm videos live in Autopilot/videos
+DESK="${BG3_REC_DIR:-$(cd "$HERE/../../.." && (pwd -W 2>/dev/null || pwd))/Autopilot/videos}"   # <BG3Mods>/Autopilot/videos, from the script location
 case "$1" in
   start)
     echo "$2" > "$FLAG"; rm -f "$TEMP/bg3rec.trig"; mkdir -p "$DESK"

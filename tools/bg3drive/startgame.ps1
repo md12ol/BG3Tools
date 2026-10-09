@@ -56,7 +56,8 @@ function Focus {
 }
 
 if (-not $NoLaunch) {
-  Start-Process -FilePath "D:\SteamLibrary\steamapps\common\Baldurs Gate 3\bin\bg3_dx11.exe" -WorkingDirectory "D:\SteamLibrary\steamapps\common\Baldurs Gate 3\bin" -ArgumentList "--skip-launcher"
+  $bg3 = if ($env:BG3_DIR) { $env:BG3_DIR } else { "D:\SteamLibrary\steamapps\common\Baldurs Gate 3" }   # game install folder (env BG3_DIR overrides)
+  Start-Process -FilePath "$bg3\bin\bg3_dx11.exe" -WorkingDirectory "$bg3\bin" -ArgumentList "--skip-launcher"
   Log "launched"
 }
 # Bring the game forward as soon as its window exists
