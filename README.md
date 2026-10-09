@@ -28,16 +28,15 @@ python tools/builds.py restore <Mod> <id>    # put an older build back into dist
 python tools/ci_release.py check <Mod>       # CI: package folder complete per INSTALL.md, committed pak == fresh build
 ```
 
-## Game driving (`tools/bg3drive/`)
-Windows + Git Bash scripts that start, quit and drive the game for in-game tests (screen recognition, clicks, key
-presses, save loading, camera, screen recording with game audio). Most of them talk to the play-testing mod through
-files in the Script Extender folder. `loopcap.exe` (WASAPI loopback recorder used by `rec.sh`) is not committed; build
-it from `loopcap.cs` with the .NET Framework compiler:
-```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /out:tools\bg3drive\loopcap.exe tools\bg3drive\loopcap.cs
-```
+## Testing in the game (`tools/testing/`)
+Small, screen-independent helpers: start the game (`launch.ps1`), find a save's row in the Load Game list
+(`saves.py`), run Lua in the running game through a mod's dev hook (`ev.sh`), take a screenshot (`screenshot.ps1`) and
+quit cleanly (`quit.ps1`). Steps that depend on the screen layout stay manual; see [CONTRIBUTING](CONTRIBUTING.md).
 
 ## Contributing
+New here? [CONTRIBUTING](CONTRIBUTING.md) covers setup (`sh setup.sh`), building, testing in the game and the rules
+below in more detail.
+
 - **One branch per task**, named after its topic (`ci-setup`, `sets-page-header`, ...), cut from `main`. Nobody
   commits to `main` directly: it is protected and only takes pull requests.
 - **Commits and PR titles use [Conventional Commits](https://www.conventionalcommits.org/)**: `feat:`, `fix:`,
