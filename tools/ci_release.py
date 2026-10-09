@@ -1,14 +1,12 @@
-"""CI and release checks for the public mods' install folders (<project>/<Mod>/: pak, INSTALL.md, ...).
+"""CI and release checks for the public mods' player packages (<project>/dist/<Mod>/: pak, INSTALL.md, ...).
 
-  python tools/ci_release.py check <Mod> [<pkg>]        the package folder holds every file its INSTALL.md lists,
-                                                         and its pak equals a fresh build of the mod source (built
-                                                         into dist/ only)
+  python tools/ci_release.py check <Mod>                 build the pak (round trip verified) and the package into the
+                                                         mod repo's dist/, zip it as dist/<Mod>-dev.zip and check the
+                                                         zip both ways against INSTALL.md (every listed file is in it,
+                                                         every file in it is named in INSTALL.md)
   python tools/ci_release.py stamp <Mod> <X.Y.Z>         write the version into the mod's meta.lsx (Version64)
   python tools/ci_release.py zip <Mod> <X.Y.Z> <pkg> <out>  zip the package folder <pkg> as <out>/<Mod>-<X.Y.Z>.zip
-                                                         and check that the zip holds every file INSTALL.md lists
-
-<pkg> is the player package folder (pak, INSTALL.md, ...); default: the install folder build_pak.py refreshes
-(<project>/<Mod>/). Workflows pass it explicitly, so moving the package only changes the workflow variables.
+                                                         and check it against INSTALL.md the same way
 
 Never touches the game or its folders. Paths come from build_pak.py (sibling repos under one parent folder).
 """
@@ -21,10 +19,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_pak  # noqa: E402
 
 PUBLIC = build_pak.RELEASE
-
-
-def install_dir(mod):
-    return os.path.join(build_pak.DESKTOP, build_pak.PROJECT[mod], mod)
 
 
 def listed_files(install_md):
@@ -73,25 +67,39 @@ def folder_files(d):
     return {os.path.relpath(os.path.join(dp, f), d).replace("\\", "/") for dp, _, fs in os.walk(d) for f in fs}
 
 
-def check(mod, d=None):
-    d = d or install_dir(mod)
-    names = listed_files(os.path.join(d, "INSTALL.md"))
-    bad = 0
-    miss = missing_in(names, folder_files(d))
-    print("%s: INSTALL.md lists %d entries: %s" % (mod, len(names), ", ".join(names)))
+def unlisted(present, install_md):
+    """Files of the package that INSTALL.md does not name (by file name)."""
+    text = open(install_md, encoding="utf-8").read()
+    return sorted(p for p in present if os.path.basename(p) not in text)
+
+
+def check_zip(path, install_md):
+    """Number of problems: files INSTALL.md lists that the zip lacks, and files in the zip INSTALL.md does not name."""
+    present = set(zipfile.ZipFile(path).namelist())
+    names = listed_files(install_md)
+    miss = missing_in(names, present)
+    extra = unlisted(present, install_md)
     for m in miss:
-        print("MISSING in %s: %s" % (os.path.relpath(d, build_pak.DESKTOP), m))
-    bad += len(miss)
+        print("MISSING in %s: %s" % (os.path.basename(path), m))
+    for e in extra:
+        print("NOT IN INSTALL.md: %s (in %s)" % (e, os.path.basename(path)))
+    print("%s: %d files, INSTALL.md lists %d entries, %d missing, %d not listed"
+          % (path, len(present), len(names), len(miss), len(extra)))
+    return len(miss) + len(extra)
+
+
+def check(mod):
+    import release_files
     out, files = build_pak.build(mod)
     build_pak.verify(out, files)
-    shipped = os.path.join(d, mod + ".pak")
-    if not os.path.isfile(shipped) or open(out, "rb").read() != open(shipped, "rb").read():
-        print("STALE: %s differs from a fresh build of Mods/%s (run python ../BG3Tools/tools/build_pak.py %s and "
-              "commit the pak)" % (os.path.relpath(shipped, build_pak.DESKTOP), mod, mod))
-        bad += 1
-    else:
-        print("%s: committed pak == fresh build (%d files)" % (mod, len(files)))
-    return bad
+    print("%s: pak round trip verified (%d files)" % (mod, len(files)))
+    d = release_files.release(mod, out)
+    md = os.path.join(d, "INSTALL.md")
+    if not os.path.isfile(md):
+        print("MISSING: %s" % md)
+        return 1
+    print("%s: INSTALL.md lists %s" % (mod, ", ".join(listed_files(md))))
+    return make_zip(mod, "dev", d, os.path.dirname(d))
 
 
 def version64(ver):
@@ -122,19 +130,13 @@ def make_zip(mod, ver, d, out_dir):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for rel in sorted(folder_files(d)):
             z.write(os.path.join(d, rel), rel)
-    present = set(zipfile.ZipFile(path).namelist())
-    names = listed_files(os.path.join(d, "INSTALL.md"))
-    miss = missing_in(names, present)
-    for m in miss:
-        print("MISSING in %s: %s" % (os.path.basename(path), m))
-    print("%s: %d files, INSTALL.md lists %d entries, %d missing" % (path, len(present), len(names), len(miss)))
-    return len(miss)
+    return check_zip(path, os.path.join(d, "INSTALL.md"))
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    if len(a) in (2, 3) and a[0] == "check" and a[1] in PUBLIC:
-        sys.exit(1 if check(a[1], a[2] if len(a) == 3 else None) else 0)
+    if len(a) == 2 and a[0] == "check" and a[1] in PUBLIC:
+        sys.exit(1 if check(a[1]) else 0)
     if len(a) == 3 and a[0] == "stamp":
         sys.exit(stamp(a[1], a[2]))
     if len(a) == 5 and a[0] == "zip":

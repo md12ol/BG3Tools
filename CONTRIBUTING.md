@@ -19,7 +19,7 @@ the folder names. Loot Advisor's game data is rebuilt from your own game install
 
 ## Build and install
 ```bash
-python BG3Tools/tools/build_pak.py              # both mods -> BG3Tools/dist/<Mod>.pak (+ each repo's install folder)
+python BG3Tools/tools/build_pak.py              # both mods -> <Mod>/dist/<Mod>.pak + the player package <Mod>/dist/<Mod>/
 python BG3Tools/tools/install_mods.py --dry-run # what would change in the game's Mods folder and modsettings.lsx
 python BG3Tools/tools/install_mods.py           # install and enable (quit the game first)
 python BG3Tools/tools/builds.py list            # earlier local builds; builds.py restore <Mod> <id> puts one back
@@ -58,5 +58,6 @@ python BG3Tools/tools/builds.py list            # earlier local builds; builds.p
   message before you commit.
 - Open the pull request against `main` (`gh pr create`). The checks `lint`, `tests`, `pr-title` and `public-text`
   must be green. Maintainers merge with a merge commit.
-- Never commit extracted game files (item texts, localisation, icons, textures, models) or built paks other than the
-  install folder's; they are rebuilt from each player's own game.
+- Never commit extracted game files (item texts, localisation, icons, textures, models) or built paks; game data is
+  rebuilt from each player's own game, and paks and the player package are built into `dist/` (locally) or by the
+  release workflow (the zip on each GitHub Release).

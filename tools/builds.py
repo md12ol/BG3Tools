@@ -4,7 +4,7 @@
   builds/<Mod>/releases/<X.Y.Z>/                  a build of a clean commit tagged vX.Y.Z; kept forever
 
 <sha> is the short HEAD of the mod's repository; -dirty means it had uncommitted changes. builds/ is gitignored.
-dist/<Mod>.pak stays the current build that install_mods.py copies into the game.
+<project>/dist/<Mod>.pak (in the mod's repo) stays the current build that install_mods.py copies into the game.
 
   python tools/builds.py list [Mod]            list archived builds, newest first
   python tools/builds.py restore <Mod> <id>    copy that build's pak to dist/ and install it (install_mods.py);
@@ -31,7 +31,7 @@ def _git(repo, *args):
 
 def archive(mod, pak, package_dir=None):
     """Keep a copy of a fresh build; returns the archive folder."""
-    repo = os.path.join(build_pak.DESKTOP, build_pak.PROJECT.get(mod, mod))
+    repo = build_pak.locate(mod)[0]
     sha = _git(repo, "rev-parse", "--short", "HEAD") or "nogit"
     dirty = bool(_git(repo, "status", "--porcelain", "--untracked-files=no"))
     tag = _git(repo, "describe", "--exact-match", "--tags", "--match", "v[0-9]*", "HEAD")
@@ -93,10 +93,10 @@ def resolve(mod, ident):
 
 def restore(mod, ident):
     src = os.path.join(resolve(mod, ident), mod + ".pak")
-    dist = os.path.join(build_pak.ROOT, "dist", mod + ".pak")
+    dist = os.path.join(build_pak.dist_dir(mod), mod + ".pak")
     os.makedirs(os.path.dirname(dist), exist_ok=True)
     shutil.copyfile(src, dist)
-    print("dist/%s.pak <- %s" % (mod, os.path.relpath(src, build_pak.ROOT)))
+    print("%s <- %s" % (dist, os.path.relpath(src, build_pak.ROOT)))
     return subprocess.call([sys.executable, os.path.join(build_pak.ROOT, "tools", "install_mods.py")])
 
 

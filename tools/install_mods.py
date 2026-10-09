@@ -1,20 +1,21 @@
 """Installs the project's mods into BG3 and enables them in the load order.
 
-  1. copies dist/BuildAdvisor.pak and dist/LootAdvisor.pak (+ BG3_EXTRA_MODS, see build_pak.py) to
+  1. copies each mod repo's dist/<Mod>.pak (BuildAdvisor, LootAdvisor + BG3_EXTRA_MODS, see build_pak.py) to
      %LOCALAPPDATA%\\Larian Studios\\Baldur's Gate 3\\Mods\\
   2. makes sure PlayerProfiles\\Public\\modsettings.lsx has a ModuleShortDesc entry for each mod (in MODS
      order). If the file also has a ModOrder node (pre-Patch-7 format), a
      matching <node id="Module"> entry is added there too. Existing entries are left alone, so running it again
      changes nothing. Before the first change of a run the old file is saved as modsettings.lsx.bak.
 
-Mod identity (Folder, Name, UUID, Version64) is read from Mods/<Folder>/meta.lsx, so it stays in sync with the paks.
+Mod identity (Folder, Name, UUID, Version64) is read from the mod's Mods/<Folder>/meta.lsx, so it stays in sync with
+the paks.
 The game must be closed (it holds the paks open and rewrites modsettings.lsx when it exits).
 
 Run:  python tools/install_mods.py            (build first: python tools/build_pak.py)
       python tools/install_mods.py --dry-run  (print what would change, touch nothing)
       python tools/install_mods.py --extra MyTestMod   (also install/enable extra mods, e.g. test mods)
       python tools/install_mods.py --remove MyTestMod  (disable a mod: drop its modsettings.lsx entries and
-                                                                move its pak out of the game's Mods folder to dist/disabled/)
+                                                                move its pak out of the game's Mods folder to its dist/disabled/)
 """
 import os
 import re
@@ -22,9 +23,8 @@ import shutil
 import subprocess
 import sys
 
-from build_pak import mod_src, MODS as BUILT   # <project>/Mods/<Folder> next to this repo
+from build_pak import dist_dir, mod_src, MODS as BUILT   # <project>/<Folder>/Mods/<Folder> next to this repo
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODS = list(BUILT)  # order = order in modsettings.lsx
 BG3_DATA = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Larian Studios", "Baldur's Gate 3")
 MODS_DIR = os.path.join(BG3_DATA, "Mods")
@@ -146,7 +146,7 @@ def main():
     metas = [read_meta(f) for f in mods]
 
     for f in mods:
-        src = os.path.join(ROOT, "dist", f + ".pak")
+        src = os.path.join(dist_dir(f), f + ".pak")
         if not os.path.isfile(src):
             raise SystemExit("missing %s - run python tools/build_pak.py first" % src)
         dst = os.path.join(MODS_DIR, f + ".pak")
@@ -164,7 +164,7 @@ def main():
         changes += ch
         pak = os.path.join(MODS_DIR, f + ".pak")
         if os.path.isfile(pak):
-            dst = os.path.join(ROOT, "dist", "disabled", f + ".pak")
+            dst = os.path.join(dist_dir(f), "disabled", f + ".pak")
             print(("would move" if dry else "move") + " %s -> %s" % (pak, dst))
             if not dry:
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
