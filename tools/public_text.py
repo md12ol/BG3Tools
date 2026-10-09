@@ -21,7 +21,7 @@ import sys
 
 # (label, regex). Written so this file does not match itself (character classes break the literal words).
 PATTERNS = [
-    ("numbered design-note reference", r"\b[Dd]ecisions?\s*#?\d+|\b[Dd]ec\.\s*\d+"),
+    ("numbered design-note reference", r"\b[Dd]ecisions?[\s-]*#?\d+|\b[Dd]ec\.\s*\d+"),
     ("owner's decision wording", r"\b[Uu]ser(?:'s)?\s+(?:decisions?|choices?|chose|asked|approved|campaigns?)\b"
                                  r"|\b(?:approved|chosen|requested|asked)\s+by\s+the\s+user\b"),
     ("assistant tooling", r"[Cc][l]aude|BG3Mods-[c]laude"),

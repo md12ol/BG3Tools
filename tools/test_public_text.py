@@ -12,6 +12,7 @@ import public_text as pt  # noqa: E402
 BAD = [
     "contested owners: active party only (" + "deci" + "sion 63)",
     "see " + "dec" + ". 66",
+    "# the " + "deci" + "sion-63 fix: owners come from the active party",
     "user " + "deci" + "sion 2026-10-09: every item gets its condition",
     "shared folder: a link to ../." + "cla" + "ude",
     "moved to the private " + "Auto" + "pilot mod",
