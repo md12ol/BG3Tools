@@ -1,7 +1,4 @@
-# BG3Tools - PUBLIC repo (decisions 71-73). Shared build/install + generic game-driving scripts.
-
-# shared Claude folder: a link to ../.claude, its own private repo
-.claude
+# BG3Tools - PUBLIC repo. Shared build/install + generic game-driving scripts.
 
 
 # Script Extender logs (12.5 GB)

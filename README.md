@@ -1,7 +1,7 @@
 # BG3Tools
 
 Shared tools for the BG3 mods [LootAdvisor](https://github.com/md12ol/LootAdvisor) and
-[BuildAdvisor](https://github.com/md12ol/BuildAdvisor) (and a private play-testing mod). Check the repositories out
+[BuildAdvisor](https://github.com/md12ol/BuildAdvisor). Check the repositories out
 side by side in one folder (`<folder>/BG3Tools`, `<folder>/LootAdvisor`, `<folder>/BuildAdvisor`): the tools find
 each mod as `../<project>/Mods/<Mod>`.
 
@@ -47,5 +47,8 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /out:tools\bg3dr
   repositories side by side and uses their branch of the same name when it exists, else `main`.
 - Merge with **"Create a merge commit"** (`gh pr merge --merge`, i.e. `--no-ff`); squash and rebase merges are off so
   the branch history stays readable. The PR title becomes the merge commit subject.
-- Tests that need the game's data run locally only: install the shared pre-push hook once
-  (`bash .claude/bin/install_githooks.sh` in the BG3Mods folder); it runs the full suite before every push.
+- Tests that need the game's data run locally only, in the pre-push hook (see CONTRIBUTING); it runs the full suite
+  before every push.
+- Public text (PR title and body, commit messages, every changed file) must not point at private or machine-local
+  things: no local paths, no private notes or repos, no private save names. Describe behaviour instead. CI checks
+  it with `tools/public_text.py` (`python tools/public_text.py text < message.txt` checks a message before you commit).

@@ -1,12 +1,12 @@
 """Packs each mod folder under Mods/ into its own pak (Larian LSPK v18, the BG3 format):
     Mods/BuildAdvisor -> dist/BuildAdvisor.pak   (the build advisor)
-    Mods/Autopilot    -> dist/Autopilot.pak      (automated play-testing tools, separate mod)
     Mods/LootAdvisor  -> dist/LootAdvisor.pak    (best items per selected origin character: frames, markers, list)
 Inside each pak the files keep their project paths (Mods/<Folder>/meta.lsx, Mods/<Folder>/ScriptExtender/...).
 
 No dependencies: LZ4 blocks are written as literal-only sequences, which every LZ4 decoder accepts.
 Run:  python tools/build_pak.py              (builds both)
-      python tools/build_pak.py Autopilot    (builds only the named mod(s))
+      python tools/build_pak.py LootAdvisor  (builds only the named mod(s); any <repo>/Mods/<Mod> next to this repo)
+More mods for the no-argument build: BG3_EXTRA_MODS=ModA,ModB (each found as <repo>/Mods/<Mod> next to this repo).
 Output goes to dist/ (+ the install folder <project>/<Mod>/ of the public mods, see RELEASE / release_files.py) and
 into the build archive builds/<Mod>/ (tools/builds.py: list, restore an older build); install with tools/install_mods.py.
 (If the game or your mod manager rejects the pak, pack the Mods folder with LSLib/Divine or
@@ -17,18 +17,20 @@ import shutil
 import struct
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # Desktop/BG3Mods/BG3Tools (dist/ is here)
-DESKTOP = os.path.dirname(ROOT)
-MODS = ["BuildAdvisor", "Autopilot", "LootAdvisor"]  # folder under Mods/ == pak name in dist/
-# Restructure 2026-10: every mod lives in its own Desktop project folder as <project>/Mods/<Folder>/...
-PROJECT = {"BuildAdvisor": "BuildAdvisor", "Autopilot": "Autopilot", "LootAdvisor": "LootAdvisor",
-           "LootAdvisorSpike": "LootAdvisor"}
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # this BG3Tools checkout (dist/ is here)
+DESKTOP = os.path.dirname(ROOT)   # the folder that holds the side-by-side repos
+EXTRA = [m for m in os.environ.get("BG3_EXTRA_MODS", "").split(",") if m.strip()]
+MODS = ["BuildAdvisor", "LootAdvisor"] + [m.strip() for m in EXTRA]  # folder under Mods/ == pak name in dist/
+# every mod lives in its own repo next to this one, as <project>/Mods/<Folder>/...
+PROJECT = {"BuildAdvisor": "BuildAdvisor", "LootAdvisor": "LootAdvisor"}
 
 
 def mod_src(mod):
-    """Source folder of a mod: Desktop/<project>/Mods/<mod> (a mod missing from PROJECT is searched in all)."""
-    projects = [PROJECT[mod]] if mod in PROJECT else []
-    projects += [p for p in dict.fromkeys(PROJECT.values()) if p not in projects]
+    """Source folder of a mod: <project>/Mods/<mod> next to this repo (a mod missing from PROJECT is searched in
+    every sibling folder, its own name first)."""
+    projects = [PROJECT[mod]] if mod in PROJECT else [mod]
+    siblings = sorted(d for d in os.listdir(DESKTOP) if os.path.isdir(os.path.join(DESKTOP, d)))
+    projects += [p for p in dict.fromkeys(list(PROJECT.values()) + siblings) if p not in projects]
     for p in projects:
         src = os.path.join(DESKTOP, p, "Mods", mod)
         if os.path.isfile(os.path.join(src, "meta.lsx")):
