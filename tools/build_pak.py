@@ -7,8 +7,8 @@ Inside each pak the files keep their project paths (Mods/<Folder>/meta.lsx, Mods
 No dependencies: LZ4 blocks are written as literal-only sequences, which every LZ4 decoder accepts.
 Run:  python tools/build_pak.py              (builds both)
       python tools/build_pak.py Autopilot    (builds only the named mod(s))
-Output goes to dist/ (+ a copy in <project>/<Mod>/ for the public mods, see RELEASE) and into the build archive
-builds/<Mod>/ (tools/builds.py: list, restore an older build); install with tools/install_mods.py.
+Output goes to dist/ (+ the install folder <project>/<Mod>/ of the public mods, see RELEASE / release_files.py) and
+into the build archive builds/<Mod>/ (tools/builds.py: list, restore an older build); install with tools/install_mods.py.
 (If the game or your mod manager rejects the pak, pack the Mods folder with LSLib/Divine or
 BG3 Modder's Multitool instead - see README.)
 """
@@ -127,20 +127,19 @@ def build(mod):
     return out, files
 
 
-# Public mods ship their built pak in an install folder at the repo root (<project>/<Mod>/<Mod>.pak, next to
-# INSTALL.md), refreshed on every build so it never goes stale. Mods/<Mod> stays the source.
+# Public mods ship an install folder at the repo root (<project>/<Mod>/: the pak, INSTALL.md, Handbook.html, Media/,
+# and for Loot Advisor Page/), refreshed on every build so it never goes stale; see release_files.py.
+# Mods/<Mod> stays the source.
 RELEASE = ("BuildAdvisor", "LootAdvisor")
 
 
 def release(mod, out):
-    """Copy a freshly built pak into its repo's install folder; returns the path, or None for mods without one."""
+    """Copy a freshly built pak (+ handbook, page, media) into its repo's install folder; returns the folder or None."""
     if mod not in RELEASE:
         return None
-    dst_dir = os.path.join(DESKTOP, PROJECT[mod], mod)
-    os.makedirs(dst_dir, exist_ok=True)
-    dst = os.path.join(dst_dir, mod + ".pak")
-    shutil.copyfile(out, dst)
-    return dst
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import release_files
+    return release_files.release(mod, out)
 
 
 def verify(out, expected):
@@ -167,7 +166,7 @@ if __name__ == "__main__":
         print("Wrote %s (%d files, %d bytes) - round-trip verified" % (out, n, os.path.getsize(out)))
         rel = release(mod, out)
         if rel:
-            print("Copied to install folder %s" % rel)
+            print("Refreshed install folder %s" % rel)
         if not os.environ.get("CI"):   # local builds are archived (tools/builds.py); CI runners are throwaway
             import builds
             print("Archived to %s" % builds.archive(mod, out, os.path.dirname(rel) if rel else None))
