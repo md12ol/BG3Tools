@@ -7,8 +7,8 @@ Inside each pak the files keep their project paths (Mods/<Folder>/meta.lsx, Mods
 No dependencies: LZ4 blocks are written as literal-only sequences, which every LZ4 decoder accepts.
 Run:  python tools/build_pak.py              (builds both)
       python tools/build_pak.py Autopilot    (builds only the named mod(s))
-Output goes to dist/ (+ a copy in <project>/<Mod>/ for the public mods, see RELEASE); install with
-tools/install_mods.py.
+Output goes to dist/ (+ a copy in <project>/<Mod>/ for the public mods, see RELEASE) and into the build archive
+builds/<Mod>/ (tools/builds.py: list, restore an older build); install with tools/install_mods.py.
 (If the game or your mod manager rejects the pak, pack the Mods folder with LSLib/Divine or
 BG3 Modder's Multitool instead - see README.)
 """
@@ -168,6 +168,9 @@ if __name__ == "__main__":
         rel = release(mod, out)
         if rel:
             print("Copied to install folder %s" % rel)
+        if not os.environ.get("CI"):   # local builds are archived (tools/builds.py); CI runners are throwaway
+            import builds
+            print("Archived to %s" % builds.archive(mod, out, os.path.dirname(rel) if rel else None))
         for name, data in files:
             print("  %-70s %6d" % (name, len(data)))
     sys.exit(0)
