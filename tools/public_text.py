@@ -45,7 +45,7 @@ ALLOW_RX = [re.compile(rx + r"\Z") for rx, _why in ALLOW]
 # sha256("bg3pt:" + name)[:20] of private save / campaign / account names (lower case, words joined by one space)
 SALT = "bg3pt:"
 NAME_HASHES = {
-    "7a3e495dd756a0323ce6", "704b628fef3cf495c6e0", "e4b512edf0f8251851c8", "421100c61440429aed36",
+    "7a3e495dd756a0323ce6", "704b628fef3cf495c6e0", "e4b512edf0f8251851c8", "421100c61440429aed36", "c591ce2298b13d627dd3",
 }
 WORD = re.compile(r"[a-z0-9]+")
 BINARY_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".pak", ".dds", ".glb", ".gr2", ".zip", ".exe",
