@@ -14,6 +14,15 @@ python tools/install_mods.py [--dry-run] # copies dist/*.pak into the game's Mod
 (`LootAdvisor/LootAdvisor/LootAdvisor.pak`, `BuildAdvisor/BuildAdvisor/BuildAdvisor.pak`, list `RELEASE`), so the pak
 players download always matches the source. `dist/` itself is not committed.
 
+Every local build is also archived (gitignored) to `builds/<Mod>/<YYYY-MM-DD_HHMM>_<sha>/` (pak + package zip; the
+newest 30 are kept) or, for a clean commit tagged `vX.Y.Z`, to `builds/<Mod>/releases/<X.Y.Z>/` (kept forever).
+`dist/` is the current build that `install_mods.py` copies into the game.
+```bash
+python tools/builds.py list [Mod]            # archived builds, newest first
+python tools/builds.py restore <Mod> <id>    # put an older build back into dist/ and install it
+python tools/ci_release.py check <Mod>       # CI: package folder complete per INSTALL.md, committed pak == fresh build
+```
+
 ## Game driving (`tools/bg3drive/`)
 Windows + Git Bash scripts that start, quit and drive the game for in-game tests (screen recognition, clicks, key
 presses, save loading, camera, screen recording with game audio). Most of them talk to the play-testing mod through
@@ -22,3 +31,16 @@ it from `loopcap.cs` with the .NET Framework compiler:
 ```
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /out:tools\bg3drive\loopcap.exe tools\bg3drive\loopcap.cs
 ```
+
+## Contributing
+- **One branch per task**, named after its topic (`ci-setup`, `sets-page-header`, ...), cut from `main`. Nobody
+  commits to `main` directly: it is protected and only takes pull requests.
+- **Commits and PR titles use [Conventional Commits](https://www.conventionalcommits.org/)**: `feat:`, `fix:`,
+  `docs:`, `chore:`, `refactor:`, `test:`, `ci:` (`feat!:` for a breaking change). A commit message is a subject line
+  plus at most one body line. No co-author, "generated with" or other attribution lines.
+- Open a pull request to `main` (`gh pr create`); the CI checks (`lint`, `tests`, `pr-title`) must be green. CI checks out the sibling
+  repositories side by side and uses their branch of the same name when it exists, else `main`.
+- Merge with **"Create a merge commit"** (`gh pr merge --merge`, i.e. `--no-ff`); squash and rebase merges are off so
+  the branch history stays readable. The PR title becomes the merge commit subject.
+- Tests that need the game's data run locally only: install the shared pre-push hook once
+  (`bash .claude/bin/install_githooks.sh` in the BG3Mods folder); it runs the full suite before every push.
