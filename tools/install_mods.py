@@ -1,9 +1,9 @@
 """Installs the project's mods into BG3 and enables them in the load order.
 
-  1. copies dist/BuildAdvisor.pak and dist/Autopilot.pak to
+  1. copies dist/BuildAdvisor.pak and dist/LootAdvisor.pak (+ BG3_EXTRA_MODS, see build_pak.py) to
      %LOCALAPPDATA%\\Larian Studios\\Baldur's Gate 3\\Mods\\
-  2. makes sure PlayerProfiles\\Public\\modsettings.lsx has a ModuleShortDesc entry for each mod (Autopilot is
-     inserted right after Build Advisor's entry). If the file also has a ModOrder node (pre-Patch-7 format), a
+  2. makes sure PlayerProfiles\\Public\\modsettings.lsx has a ModuleShortDesc entry for each mod (in MODS
+     order). If the file also has a ModOrder node (pre-Patch-7 format), a
      matching <node id="Module"> entry is added there too. Existing entries are left alone, so running it again
      changes nothing. Before the first change of a run the old file is saved as modsettings.lsx.bak.
 
@@ -12,8 +12,8 @@ The game must be closed (it holds the paks open and rewrites modsettings.lsx whe
 
 Run:  python tools/install_mods.py            (build first: python tools/build_pak.py)
       python tools/install_mods.py --dry-run  (print what would change, touch nothing)
-      python tools/install_mods.py --extra LootAdvisorSpike   (also install/enable extra mods, e.g. test mods)
-      python tools/install_mods.py --remove LootAdvisorSpike  (disable a mod: drop its modsettings.lsx entries and
+      python tools/install_mods.py --extra MyTestMod   (also install/enable extra mods, e.g. test mods)
+      python tools/install_mods.py --remove MyTestMod  (disable a mod: drop its modsettings.lsx entries and
                                                                 move its pak out of the game's Mods folder to dist/disabled/)
 """
 import os
@@ -22,10 +22,10 @@ import shutil
 import subprocess
 import sys
 
-from build_pak import mod_src   # Desktop/<project>/Mods/<Folder> (restructure 2026-10)
+from build_pak import mod_src, MODS as BUILT   # <project>/Mods/<Folder> next to this repo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODS = ["BuildAdvisor", "Autopilot", "LootAdvisor"]  # order = order in modsettings.lsx
+MODS = list(BUILT)  # order = order in modsettings.lsx
 BG3_DATA = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Larian Studios", "Baldur's Gate 3")
 MODS_DIR = os.path.join(BG3_DATA, "Mods")
 MODSETTINGS = os.path.join(BG3_DATA, "PlayerProfiles", "Public", "modsettings.lsx")

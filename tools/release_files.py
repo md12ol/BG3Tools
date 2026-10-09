@@ -1,4 +1,4 @@
-"""Fills a public mod's install folder (<project>/<Mod>/) with everything a player needs (HANDOFF decision 82):
+"""Fills a public mod's install folder (<project>/<Mod>/) with everything a player needs:
 
     <Mod>.pak          the freshly built pak (from build_pak.py)
     INSTALL.md         hand-written install steps (Script Extender stays a link; not bundled)
@@ -19,20 +19,20 @@ import shutil
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # Desktop/BG3Mods/BG3Tools
-DESKTOP = os.path.dirname(ROOT)                                      # Desktop/BG3Mods
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # this BG3Tools checkout
+DESKTOP = os.path.dirname(ROOT)                                      # the folder with the side-by-side repos
 PROJECT = {"BuildAdvisor": "BuildAdvisor", "LootAdvisor": "LootAdvisor"}
 RELEASE = tuple(PROJECT)
 
 # The shippable Sets page: every file in the source folder is copied to <install>/Page/.
 # PLACEHOLDER until the ship-page builder (LootAdvisor/tools/build_sets_ship.py) names its final output files:
-# today that is Mods/LootAdvisor/Page/Sets.html. Paths are relative to Desktop/BG3Mods.
+# today that is Mods/LootAdvisor/Page/Sets.html. Paths are relative to the folder with the repos.
 PAGE_SOURCES = {"LootAdvisor": [os.path.join("LootAdvisor", "Mods", "LootAdvisor", "Page")]}
 
 HANDBOOK = os.path.join(DESKTOP, "BuildAdvisor", "docs_site", "build_player_handbook.py")
 
-# Media/: (source relative to Desktop/BG3Mods, file name in Media/, edit). Branding = option 1 "Gilded Panel"
-# (decision 58). Screenshots are re-encoded as JPEG (2560x1600, quality 85) unless an edit crops them.
+# Media/: (source relative to the folder with the repos, file name in Media/, edit). Branding = option 1 "Gilded Panel".
+# Screenshots are re-encoded as JPEG (2560x1600, quality 85) unless an edit crops them.
 # edit: None (copy as is), "jpg" (re-encode), or a dict {"crop": box, "cover": [boxes painted with the window colour]}.
 _B = os.path.join("BuildAdvisor", "branding")
 _S = os.path.join("LootAdvisor", "shots")
