@@ -39,16 +39,18 @@ Everything below runs from the folder that holds the three checkouts.
 
 ## Testing in the game
 The helpers are in [`tools/testing/`](tools/testing/README.md); its README has the full table and the setup of the
-dev eval hook. **Shared** helpers start, inspect and stop the game the same way for every use; **test shortcuts**
+dev eval hook. **Shared** helpers start, drive, inspect and stop the game the same way for every use; **test shortcuts**
 break the game's rules for speed and are for test saves only.
 
 | Step | How | Kind |
 |---|---|---|
-| start the game | `tools/testing/launch.ps1` (through Steam, skips the Larian launcher, waits for the window) | shared |
-| load a save by name | `python tools/testing/saves.py <part of the save name>` prints its row in the Load Game list; load it from the menu | shared |
+| borderless, never windowed | `tools/testing/borderless.ps1 [-Fix]` (click points assume no title bar; launch and startgame run it) | shared |
+| start the game | `tools/testing/launch.ps1` (through Steam, skips the Larian launcher, waits for the window), or `tools/testing/restart.sh [menu]` (installs the local builds, clicks through to the main menu or Continues the latest save) | shared |
+| load a save by name | `tools/testing/loadsave.sh QuickSave_12 [menu\|ingame]` (finds the row by OCR, waits for the load through the eval hook); `python tools/testing/saves.py <part of the name>` lists rows | shared |
+| click, keys, read the screen | `gclick.ps1 -Seq "x,y"`, `gamekey.ps1 -Keys esc`, `ocrscreen.ps1 -Find text` and the rest in the README table (1389x868 frame coordinates) | shared |
 | run Lua in the game | set `"Dev": true` in `LootAdvisor_settings.json` (Script Extender folder), then `echo 'print(1)' \| tools/testing/ev.sh server -` (`-m <Mod>` for another mod with the same hook) | shared |
 | screenshot | `tools/testing/screenshot.ps1 [-Out file.png]` (whole screen, full resolution; bring the game to the front first) | shared |
-| quit cleanly | `tools/testing/quit.ps1` (asks the game to close and waits; never force-kill the game) | shared |
+| quit cleanly | `tools/testing/quit.ps1` (asks the game to close and waits) or `tools/testing/quit.sh` (from the game's menu); never force-kill the game | shared |
 | reach a test state fast | `python tools/testing/cheat.py tp X Y Z`, `spawn <template>`, `flag set <flag>`, `party add <character>`, `respec STR=17 ...`, `boost add <boost>`, `status <status>` | test shortcut |
 
 Loot Advisor's gauntlet (gear sets measured in the game, F9 window for manual runs) loads its Lua through the same

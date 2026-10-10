@@ -4,6 +4,8 @@ param([int]$TimeoutSec = 180, [switch]$WithLauncher)
 # What happens next is manual: press a key on the title screen, then Continue or Load Game (see CONTRIBUTING).
 $names = "bg3_dx11", "bg3"
 if (Get-Process -Name $names -ErrorAction SilentlyContinue) { "Baldur's Gate 3 is already running"; exit 0 }
+& "$PSScriptRoot\borderless.ps1" -Fix   # borderless, never windowed: a title bar shifts every click point
+# (startgame.ps1 also clicks through the start screens to the main menu or Continue)
 $url = if ($WithLauncher) { "steam://rungameid/1086940" } else { "steam://run/1086940//--skip-launcher/" }
 Start-Process $url
 $t0 = Get-Date
