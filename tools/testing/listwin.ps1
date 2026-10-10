@@ -12,11 +12,13 @@ public class LW {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
 }
 "@
+$rows = New-Object System.Collections.ArrayList   # output of the callback itself never reaches the pipeline
 [LW]::EnumWindows({ param($h, $l)
   if ([LW]::IsWindowVisible($h)) {
     $sb = New-Object Text.StringBuilder 256; [LW]::GetWindowText($h, $sb, 256) | Out-Null
     $p = 0; [LW]::GetWindowThreadProcessId($h, [ref]$p) | Out-Null
     $r = New-Object LW+RECT; [LW]::GetWindowRect($h, [ref]$r) | Out-Null
     $name = (Get-Process -Id $p -ErrorAction SilentlyContinue).Name
-    if (($r.R - $r.L) -gt 100 -and ($r.B - $r.T) -gt 100) { "{0,-22} {1,-45} {2},{3} {4}x{5}" -f $name, $sb.ToString(), $r.L, $r.T, ($r.R-$r.L), ($r.B-$r.T) }
+    if (($r.R - $r.L) -gt 100 -and ($r.B - $r.T) -gt 100) { $script:rows.Add(("{0,-22} {1,-45} {2},{3} {4}x{5}" -f $name, $sb.ToString(), $r.L, $r.T, ($r.R-$r.L), ($r.B-$r.T))) | Out-Null }
   }; return $true }, [IntPtr]::Zero) | Out-Null
+$rows
