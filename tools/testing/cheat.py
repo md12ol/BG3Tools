@@ -18,6 +18,15 @@ must have "Dev": true in <Mod>_settings.json in the Script Extender folder, and 
   python tools/testing/cheat.py respec STR=17 DEX=14 CON=16 ...        set ability scores through boosts
   python tools/testing/cheat.py respec --reset                         remove every boost respec added
   python tools/testing/cheat.py status STATUS [TURNS]                  apply a status (-1 = until removed)
+  python tools/testing/cheat.py reactions list                         every party character's reactions and settings
+  python tools/testing/cheat.py reactions apply [--policy auto|never] [--set Interrupt_X=never ...]
+                                                                       scripted runs: the game never asks (see below)
+  python tools/testing/cheat.py reactions restore                      put the saved own settings back
+
+Reactions: a reaction the game asks about ("Use reaction?") stops a scripted turn until someone answers. `apply`
+saves each party character's own settings (once, in the running game) and sets every reaction to fire on its own
+("auto", the default) or not at all ("never"), then reads them back; `restore` puts the saved settings back. Use it
+only around a scripted or agent-driven run, never while a person plays: their reactions are their choice.
 
 Options: --who GUID (default: the host character), -m MOD (another mod with the same hook), --timeout S,
 --dry-run (print the Lua and send nothing; works without the game).
@@ -117,7 +126,61 @@ def build(a):
         return w + "Osi.ApplyStatus(who, %s, %s, 1, who)\nreturn 'status applied'" % (lua_str(a.status),
                                                                                     float(a.turns) * 6.0
                                                                                     if a.turns >= 0 else -1)
+    if c == "reactions":
+        return reactions_lua(a.op, a.policy, a.set or [])
     raise SystemExit("unknown command " + c)
+
+
+REACTION_FLAGS = {"auto": ["Enabled"], "never": [], "ask": ["Ask", "Enabled"]}
+
+
+def reaction_policy(sets, default="auto"):
+    """--set Interrupt_X=never ... -> {name: policy}; refuses unknown policies."""
+    if default not in REACTION_FLAGS:
+        raise SystemExit("reactions: policy must be one of %s" % ", ".join(REACTION_FLAGS))
+    out = {}
+    for kv in sets:
+        k, _, v = kv.partition("=")
+        if not k or v not in REACTION_FLAGS:
+            raise SystemExit("reactions: expected Interrupt_X=%s, got %r" % ("|".join(REACTION_FLAGS), kv))
+        out[k] = v
+    return out
+
+
+def reactions_lua(op, default, sets):
+    pol = reaction_policy(sets, default)
+    head = (
+        "local FLAGS = {auto = {'Enabled'}, never = {}, ask = {'Ask', 'Enabled'}}\n"
+        "local function parse(s) local o = {} for f in (tostring(s):match('%((.*)%)') or ''):gmatch('[%a_]+') do "
+        "o[#o + 1] = f end return o end\n"
+        "local function party() local o = {} for _, r in ipairs(Osi.DB_Players:Get(nil)) do "
+        "o[#o + 1] = r[1]:match('(%x+%-%x+%-%x+%-%x+%-%x+)$') or r[1] end return o end\n"
+        "local function prefs(u) local e = Ext.Entity.Get(u) return e, e and e.InterruptPreferences.Preferences end\n"
+        "local out = {}\n")
+    if op == "list":
+        return head + (
+            "for _, u in ipairs(party()) do local _, P = prefs(u) local t = {}\n"
+            "  for k, v in pairs(P or {}) do t[#t + 1] = k .. '=' .. table.concat(parse(v), '+') end table.sort(t)\n"
+            "  out[#out + 1] = u .. ': ' .. table.concat(t, ' ') end\nreturn table.concat(out, '\\n')")
+    if op == "restore":
+        return head + (
+            "local n = 0\nfor u, own in pairs(CHEAT_REACTIONS_SAVED or {}) do local e, P = prefs(u)\n"
+            "  if P then for k, f in pairs(own) do P[k] = f end pcall(function() e:Replicate('InterruptPreferences') end) "
+            "n = n + 1 end end\nCHEAT_REACTIONS_SAVED = nil\nreturn 'restored ' .. n .. ' characters'")
+    rows = ", ".join("[ %s ] = %s" % (lua_str(k), lua_str(v)) for k, v in sorted(pol.items()))
+    return head + (
+        "local POL, DEF = {%s}, %s\nCHEAT_REACTIONS_SAVED = CHEAT_REACTIONS_SAVED or {}\n"
+        "for _, u in ipairs(party()) do local e, P = prefs(u)\n"
+        "  if P then local own, bad = {}, 0\n"
+        "    for k, v in pairs(P) do own[k] = parse(v) end\n"
+        "    if CHEAT_REACTIONS_SAVED[u] == nil then CHEAT_REACTIONS_SAVED[u] = own end\n"
+        "    for k in pairs(own) do P[k] = FLAGS[POL[k] or DEF] end\n"
+        "    pcall(function() e:Replicate('InterruptPreferences') end)\n"
+        "    for k in pairs(own) do if table.concat(parse(P[k]), '+') ~= table.concat(FLAGS[POL[k] or DEF], '+') then "
+        "bad = bad + 1 end end\n"
+        "    out[#out + 1] = string.format('%%s: %%d reactions set, %%d not as asked', u, #(function() local t = {} "
+        "for k in pairs(own) do t[#t + 1] = k end return t end)(), bad) end end\n"
+        "return table.concat(out, '\\n')") % (rows, lua_str(default))
 
 
 def parser():
@@ -151,6 +214,10 @@ def parser():
     p = sub.add_parser("respec")
     p.add_argument("scores", nargs="*")
     p.add_argument("--reset", action="store_true")
+    p = sub.add_parser("reactions")
+    p.add_argument("op", choices=["list", "apply", "restore"])
+    p.add_argument("--policy", default="auto", help="auto (fires without asking) or never")
+    p.add_argument("--set", action="append", metavar="Interrupt_X=POLICY", help="per reaction, repeatable")
     p = sub.add_parser("status")
     p.add_argument("status")
     p.add_argument("turns", nargs="?", type=float, default=-1)

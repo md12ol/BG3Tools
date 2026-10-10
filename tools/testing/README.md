@@ -16,7 +16,7 @@ Use the shortcuts on test saves only; saving afterwards keeps their changes.
 | `ev.sh` | shared | run Lua in the game through a mod's dev eval hook and print the answer |
 | `screenshot.ps1` | shared | full-resolution screenshot of the primary screen |
 | `quit.ps1` | shared | ask the game to close and wait for it (never force-kills) |
-| `cheat.py` | test shortcut | teleport, spawn items, story flags, recruit, boosts, ability-score respec, statuses |
+| `cheat.py` | test shortcut | teleport, spawn items, story flags, recruit, boosts, ability-score respec, statuses, reactions that never ask (scripted runs) |
 
 ## The dev eval hook
 Loot Advisor (and any mod with the same hook) runs Lua sent by file when its settings say so:
@@ -33,6 +33,8 @@ python tools/testing/cheat.py tp -650 0 -330            # teleport there (the pa
 python tools/testing/cheat.py spawn <root template GUID> # into the host's inventory
 python tools/testing/cheat.py respec STR=17 CON=16      # ability scores through boosts; respec --reset undoes it
 python tools/testing/cheat.py --dry-run flag set <flag> # print the Lua only; works without the game
+python tools/testing/cheat.py reactions apply           # scripted runs only: no "Use reaction?" prompts; restore puts
+                                                        # the player's own reaction settings back
 ```
 `python tools/testing/test_cheat.py` checks offline that every command builds Lua that compiles (CI runs it).
 
