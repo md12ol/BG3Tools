@@ -79,7 +79,8 @@ python tools/testing/cheat.py respec STR=17 CON=16      # ability scores through
 python tools/testing/cheat.py --dry-run flag set <flag> # print the Lua only; works without the game
 python tools/testing/cheat.py reactions apply           # scripted runs only: no "Use reaction?" prompts; restore puts
                                                         # the player's own reaction settings back
-python tools/testing/cheat.py autosave off             # no autosave during a test; autosave restore at the end
+python tools/testing/cheat.py autosave off             # no autosave during a test; autosave restore at the end,
+                                                        # then load a save before quitting (the game stores it then)
 ```
 `python tools/testing/test_cheat.py` checks offline that every command builds Lua that compiles (CI runs it).
 
