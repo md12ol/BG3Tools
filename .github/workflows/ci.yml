@@ -85,7 +85,7 @@ jobs:
         run: python -m compileall -q BG3Tools/tools
       - run: pip install -q "pillow==$PILLOW_VERSION" "lz4==$LZ4_VERSION" "lupa==$LUPA_VERSION"
       - name: Game-helper tests (Lua the cheat helpers send compiles; no game)
-        run: python BG3Tools/tools/testing/test_cheat.py
+        run: python BG3Tools/tools/testing/test_cheat.py && python BG3Tools/tools/testing/test_respec.py
       - name: Pak builder round trip + package zips checked against INSTALL.md (built into each repo's dist/)
         run: |
           python BG3Tools/tools/ci_release.py check LootAdvisor

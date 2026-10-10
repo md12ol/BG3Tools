@@ -31,6 +31,7 @@ Use the shortcuts on test saves only; saving afterwards keeps their changes.
 | `quit.sh` | shared | quit from the game's menu (clicks) and wait for the process to exit |
 | `quit.ps1` | shared | ask the game to close and wait for it (never force-kills) |
 | `cheat.py` | test shortcut | teleport, spawn items, story flags, recruit, boosts, ability-score respec, statuses, reactions that never ask (scripted runs), autosave off during a test |
+| `respec.py` | test shortcut | make a build through the game's own respec and level-up screens: class, subclass, point buy, racial bonuses, skills, styles, feats; spells listed for a click |
 
 Prefer the engine to the screen: read and change the game through `ev.sh` and `cheat.py`, then keys, and click only
 where nothing else reaches (the start screens, the Load list, the dialogs above, or UI that is itself under test).
@@ -91,6 +92,30 @@ python tools/testing/cheat.py autosave off             # no autosave during a te
 - After a pak rebuild, loading a save shows the game's "Mod Verification" dialog: click Start Game.
 - The Script Extender console (`ScriptExtenderSettings.json` in `bin` with `{"CreateConsole": true}`) shows the mods'
   log lines and accepts `!la_dev` and the other console commands.
+
+## Builds through the respec and level-up screens
+`respec.py` makes a character's build the way a player does, so the game applies its own rules (no boosts): `open`
+starts the respec for any party character (no trip to Withers), `levelup` opens a pending level, and each pick goes
+through the screen's own view-model command. Spells and cantrips are the exception: `spells --click` clicks them in
+the open list, last first (`--grid-y` moves the grid if a list sits elsewhere). `history` reads back what each level
+took, to check a build against its plan. Use it on test saves: `open` skips Withers, and Confirm keeps the result.
+
+```bash
+python tools/testing/respec.py open S_Player_Gale_ad9af97d-75da-406a-ae13-7071c563f604
+python tools/testing/respec.py abilities STR=8 DEX=14 CON=15 INT=15 WIS=10 CHA=8
+python tools/testing/respec.py bonus INT CON
+python tools/testing/respec.py skills Investigation Insight
+# click the respec's Confirm, then once per level:
+python tools/testing/respec.py levelup S_Player_Gale_ad9af97d-75da-406a-ae13-7071c563f604
+python tools/testing/respec.py spells "Fireball" "Lightning Bolt" --click    # after opening the Spells step
+python tools/testing/respec.py finish
+python tools/testing/respec.py history S_Player_Gale_ad9af97d-75da-406a-ae13-7071c563f604
+```
+The picks are deferred: the screen changes at once, the definition the game applies a few seconds later, so wait
+before Confirm or `finish`. The commands that need several calls (`abilities`, `bonus`, `skills`, `asi`) repeat
+until the screen reports them done, and exit with 1 when it does not. Skills take the internal name (`SleightOfHand`).
+Never send layout queries such as `FrameworkElement:PointToScreen` through the eval hook: they deadlock the game.
+`python tools/testing/test_respec.py` checks the Lua offline (CI runs it).
 
 ## Loot Advisor's gauntlet
 The gauntlet measures gear sets in the game; its tools are in Loot Advisor's `tools/gauntlet/` and use the same eval
