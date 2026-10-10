@@ -22,11 +22,17 @@ must have "Dev": true in <Mod>_settings.json in the Script Extender folder, and 
   python tools/testing/cheat.py reactions apply [--policy auto|never] [--set Interrupt_X=never ...]
                                                                        scripted runs: the game never asks (see below)
   python tools/testing/cheat.py reactions restore                      put the saved own settings back
+  python tools/testing/cheat.py autosave off|restore|status            the game's autosave during a test (see below)
 
 Reactions: a reaction the game asks about ("Use reaction?") stops a scripted turn until someone answers. `apply`
 saves each party character's own settings (once, in the running game) and sets every reaction to fire on its own
 ("auto", the default) or not at all ("never"), then reads them back; `restore` puts the saved settings back. Use it
 only around a scripted or agent-driven run, never while a person plays: their reactions are their choice.
+
+Autosave: the game autosaves after fights and story beats, also in a test save, and a test's cheats then sit in the
+newest save of the campaign. `autosave off` records the current setting in the Script Extender folder
+(cheat_autosave_saved.json, kept across loads) and switches it off; `autosave restore` puts the recorded value back
+and removes the record; `status` reads it. Run restore at the end of every test, also after an abort.
 
 Options: --who GUID (default: the host character), -m MOD (another mod with the same hook), --timeout S,
 --dry-run (print the Lua and send nothing; works without the game).
@@ -126,9 +132,32 @@ def build(a):
         return w + "Osi.ApplyStatus(who, %s, %s, 1, who)\nreturn 'status applied'" % (lua_str(a.status),
                                                                                     float(a.turns) * 6.0
                                                                                     if a.turns >= 0 else -1)
+    if c == "autosave":
+        return autosave_lua(a.op)
     if c == "reactions":
         return reactions_lua(a.op, a.policy, a.set or [])
     raise SystemExit("unknown command " + c)
+
+
+AUTOSAVE_RECORD = "cheat_autosave_saved.json"
+
+
+def autosave_lua(op):
+    """The game's global switch CanAutoSave (Ext.Utils.GetGlobalSwitches); the original value is kept in a file so a
+    reload or an aborted test cannot lose it."""
+    head = "local g = Ext.Utils.GetGlobalSwitches()\n"
+    if op == "status":
+        return head + "return 'CanAutoSave = ' .. tostring(g.CanAutoSave)"
+    if op == "off":
+        return head + ("local rec = Ext.IO.LoadFile(%s)\nif not rec or rec == '' then Ext.IO.SaveFile(%s, tostring(g.CanAutoSave)) end\n"
+                       "g.CanAutoSave = false\n"
+                       "return 'CanAutoSave = ' .. tostring(Ext.Utils.GetGlobalSwitches().CanAutoSave) .. ' (recorded: ' .. "
+                       "tostring(Ext.IO.LoadFile(%s)) .. ')'") % ((lua_str(AUTOSAVE_RECORD),) * 3)
+    return head + ("local rec = Ext.IO.LoadFile(%s)\n"
+                   "if rec and rec ~= '' then g.CanAutoSave = (rec ~= 'false') else g.CanAutoSave = true end\n"
+                   "Ext.IO.SaveFile(%s, '')\n"
+                   "return 'CanAutoSave = ' .. tostring(Ext.Utils.GetGlobalSwitches().CanAutoSave)") % (
+        lua_str(AUTOSAVE_RECORD), lua_str(AUTOSAVE_RECORD))
 
 
 REACTION_FLAGS = {"auto": ["Enabled"], "never": [], "ask": ["Ask", "Enabled"]}
@@ -214,6 +243,7 @@ def parser():
     p = sub.add_parser("respec")
     p.add_argument("scores", nargs="*")
     p.add_argument("--reset", action="store_true")
+    sub.add_parser("autosave").add_argument("op", choices=["off", "restore", "status"])
     p = sub.add_parser("reactions")
     p.add_argument("op", choices=["list", "apply", "restore"])
     p.add_argument("--policy", default="auto", help="auto (fires without asking) or never")
