@@ -32,7 +32,10 @@ only around a scripted or agent-driven run, never while a person plays: their re
 Autosave: the game autosaves after fights and story beats, also in a test save, and a test's cheats then sit in the
 newest save of the campaign. `autosave off` records the current setting in the Script Extender folder
 (cheat_autosave_saved.json, kept across loads) and switches it off; `autosave restore` puts the recorded value back
-and removes the record; `status` reads it. Run restore at the end of every test, also after an abort.
+and removes the record; `status` reads it. Run restore at the end of every test, also after an abort. The game
+stores the setting (PlayerProfiles/Public/config.lsf, CanAutoSave; left out when on) only when it next writes its
+config, which a save load does and quitting does not: after restore, load a save before quitting, or the stored
+setting stays off and the next start begins with autosave off.
 
 Options: --who GUID (default: the host character), -m MOD (another mod with the same hook), --timeout S,
 --dry-run (print the Lua and send nothing; works without the game).
@@ -156,7 +159,8 @@ def autosave_lua(op):
     return head + ("local rec = Ext.IO.LoadFile(%s)\n"
                    "if rec and rec ~= '' then g.CanAutoSave = (rec ~= 'false') else g.CanAutoSave = true end\n"
                    "Ext.IO.SaveFile(%s, '')\n"
-                   "return 'CanAutoSave = ' .. tostring(Ext.Utils.GetGlobalSwitches().CanAutoSave)") % (
+                   "return 'CanAutoSave = ' .. tostring(Ext.Utils.GetGlobalSwitches().CanAutoSave) .. "
+                   "' (stored at the next save load: load a save before quitting)'") % (
         lua_str(AUTOSAVE_RECORD), lua_str(AUTOSAVE_RECORD))
 
 
