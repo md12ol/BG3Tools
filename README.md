@@ -34,7 +34,8 @@ python tools/ci_release.py check <Mod>       # CI: build pak + package into dist
 ## Testing in the game (`tools/testing/`)
 Small, screen-independent helpers: start the game (`launch.ps1`), find a save's row in the Load Game list
 (`saves.py`), run Lua in the running game through a mod's dev hook (`ev.sh`), take a screenshot (`screenshot.ps1`) and
-quit cleanly (`quit.ps1`). Steps that depend on the screen layout stay manual; see [CONTRIBUTING](CONTRIBUTING.md).
+quit cleanly (`quit.ps1`), plus test shortcuts that break the game's rules for speed on test saves
+(`cheat.py`: teleport, spawn, story flags, recruit, ability boosts). See [`tools/testing/README.md`](tools/testing/README.md).
 
 ## Contributing
 New here? [CONTRIBUTING](CONTRIBUTING.md) covers setup (`sh setup.sh`), building, testing in the game and the rules

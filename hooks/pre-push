@@ -34,6 +34,9 @@ case "$repo" in
     else
       skip "tests/run.py: no local game data here and this run.py has no --ci (CI runs them on the PR)"
     fi
+    [ -f "$top/tests/test_gauntlet.py" ] && run "$py" "$top/tests/test_gauntlet.py"
+    # the optimizer's output checks depend on a fresh optimizer run, so the hook runs only its pure maths tests
+    [ -f "$top/tests/test_optimizer.py" ] && run "$py" "$top/tests/test_optimizer.py" --ci
     if sib BuildAdvisor; then run "$py" "$top/tools/leak_scan.py"; else skip "leak_scan (no ../BuildAdvisor next to this checkout)"; fi
     if [ -f "$parent/BG3Tools/tools/ci_release.py" ]; then run "$py" "$parent/BG3Tools/tools/ci_release.py" check LootAdvisor
     else skip "pak/package check (no ../BG3Tools/tools/ci_release.py next to this checkout)"; fi

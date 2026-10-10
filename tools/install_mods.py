@@ -140,7 +140,9 @@ def main():
     mods = MODS + [args[i + 1] for i, a in enumerate(args[:-1]) if a == "--extra"]
     removes = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "--remove"]
     mods = [m for m in mods if m not in removes]
-    if game_running():
+    if game_running() and dry:
+        print("note: BG3 is running; a real install would refuse until it is quit from its menu.")
+    elif game_running():
         raise SystemExit("BG3 is running - quit it from its menu first (the paks are in use and the game rewrites "
                          "modsettings.lsx on exit).")
     metas = [read_meta(f) for f in mods]
