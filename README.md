@@ -8,7 +8,7 @@ keeps its source the way other BG3 mod repositories do, as `<Mod>/Mods/<Mod>` (p
 
 ## Build and install
 ```bash
-python tools/build_pak.py [Mod ...]     # packs <project>/<Mod>/ into <project>/dist/<Mod>.pak (Larian LSPK v18, no dependencies)
+python tools/build_pak.py [Mod ...]     # packs <project>/<Mod>/ into <project>/dist/<Mod>.pak (Larian LSPK v18, LZ4HC like the Toolkit; needs `pip install lz4`)
 python tools/install_mods.py [--dry-run] # copies each <project>/dist/<Mod>.pak into the game's Mods folder and enables it in modsettings.lsx
 ```
 Built paks are never committed: each mod repo ignores its `dist/`. For the public mods (list `RELEASE`)

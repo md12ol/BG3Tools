@@ -6,7 +6,9 @@ the layout of other BG3 mod repositories. Inside the pak the files keep their pa
 Mods/<Mod>/ScriptExtender/...). A mod still in the older layout <project>/Mods/<Mod> is found too (only Mods/<Mod> is
 packed then).
 
-No dependencies: LZ4 blocks are written as literal-only sequences, which every LZ4 decoder accepts.
+Files and the file list are LZ4 blocks at LZ4HC level 9, the settings of Larian's own mod packer (the Toolkit), whose
+output this matches byte for byte per file. That needs the lz4 package (pip install lz4); without it the pak is still
+valid but stored uncompressed (literal-only LZ4 blocks), about twice the size, and the build says so.
 Run:  python tools/build_pak.py              (builds both)
       python tools/build_pak.py LootAdvisor  (builds only the named mod(s), from any repo next to this one)
 More mods for the no-argument build: BG3_EXTRA_MODS=ModA,ModB (each found in a repo next to this one).
@@ -20,6 +22,11 @@ import os
 import shutil
 import struct
 import sys
+
+try:
+    import lz4.block
+except ImportError:   # fall back to uncompressed literal-only blocks (see the docstring)
+    lz4 = None
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # this BG3Tools checkout (builds/ is here)
 DESKTOP = os.path.dirname(ROOT)   # the folder that holds the side-by-side repos
@@ -60,6 +67,16 @@ SIGNATURE = b"LSPK"
 VERSION = 18
 ENTRY_SIZE = 272
 FLAG_LZ4_DEFAULT = 0x02 | 0x40  # CompressionMethod.LZ4 | MaxCompress (same as the game's own paks)
+PAK_FLAGS = 0x02   # AllowMemoryMapping, set in the header of Toolkit-built mod paks
+LZ4HC_LEVEL = 9    # the level the Toolkit compresses files and the file list with
+ALIGN = 64         # file data starts on 64-byte boundaries counted from the end of the header, as the Toolkit writes
+
+
+def compress(data: bytes) -> bytes:
+    """One LZ4 block (no size prefix) of data: LZ4HC level 9, or literal-only without the lz4 package."""
+    if lz4 is None:
+        return lz4_literal_block(data)
+    return lz4.block.compress(data, mode="high_compression", compression=LZ4HC_LEVEL, store_size=False)
 
 
 def lz4_literal_block(data: bytes) -> bytes:
@@ -94,7 +111,11 @@ def lz4_decode(src: bytes, size: int) -> bytes:
                 b = src[i]; i += 1; ml += b
                 if b != 255: break
         ml += 4
-        for _ in range(ml): out.append(out[-off])
+        start = len(out) - off
+        while ml > 0:   # a match may overlap its own output, so copy at most off bytes at a time
+            n = min(ml, off)
+            out += out[start:start + n]
+            start += n; ml -= n
     assert len(out) == size, (len(out), size)
     return bytes(out)
 
@@ -131,24 +152,24 @@ def build(mod):
         f.write(b"\0" * header_size)
         entries = []
         for name, data in files:
-            pad = (-f.tell()) % 64
+            pad = (header_size - f.tell()) % ALIGN
             f.write(b"\0" * pad)
             offset = f.tell()
-            comp = lz4_literal_block(data)
+            comp = compress(data)
             f.write(comp)
             nb = name.encode("utf-8")
             assert len(nb) < 256, name
             entries.append(struct.pack("<256sIHBBII", nb, offset & 0xFFFFFFFF, offset >> 32, 0,
                                        FLAG_LZ4_DEFAULT, len(comp), len(data)))
         list_raw = b"".join(entries)
-        list_comp = lz4_literal_block(list_raw)
+        list_comp = compress(list_raw)
         list_offset = f.tell()
         f.write(struct.pack("<II", len(files), len(list_comp)))
         f.write(list_comp)
         list_size = f.tell() - list_offset
         f.seek(0)
         f.write(SIGNATURE)
-        f.write(struct.pack("<IQIBB16sH", VERSION, list_offset, list_size, 0, 0, b"\0" * 16, 1))
+        f.write(struct.pack("<IQIBB16sH", VERSION, list_offset, list_size, PAK_FLAGS, 0, b"\0" * 16, 1))
     return out, files
 
 
@@ -167,6 +188,7 @@ def release(mod, out):
 
 
 def verify(out, expected):
+    """Reads the pak back with lz4_decode, independent of the lz4 package that wrote it."""
     blob = open(out, "rb").read()
     assert blob[:4] == SIGNATURE
     ver, lo, ls, _, _, _, parts = struct.unpack_from("<IQIBB16sH", blob, 4)
@@ -184,6 +206,8 @@ def verify(out, expected):
 
 
 if __name__ == "__main__":
+    if lz4 is None:
+        print("WARNING: the lz4 package is missing (pip install lz4); paks are written uncompressed", file=sys.stderr)
     for mod in sys.argv[1:] or MODS:
         out, files = build(mod)
         n = verify(out, files)

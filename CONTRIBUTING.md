@@ -7,7 +7,7 @@ helpers for testing in the game.
 
 ## Setup
 You need Windows with Baldur's Gate 3 (Steam), [Script Extender](https://github.com/Norbyte/bg3se), Git (Git Bash),
-Python 3.12 and, for the tests, `pip install lz4 zstandard pillow lupa`.
+Python 3.12 and `pip install lz4` (the pak builder compresses with it), plus `zstandard pillow lupa` for the tests.
 ```bash
 mkdir BG3Mods && cd BG3Mods
 git clone https://github.com/md12ol/BG3Tools.git
