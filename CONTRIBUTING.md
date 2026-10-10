@@ -7,7 +7,8 @@ helpers for testing in the game.
 
 ## Setup
 You need Windows with Baldur's Gate 3 (Steam), [Script Extender](https://github.com/Norbyte/bg3se), Git (Git Bash),
-Python 3.12 and `pip install lz4` (the pak builder compresses with it), plus `zstandard pillow lupa` for the tests.
+Python 3.12 and `pip install lz4 zstandard pillow lupa` (lz4 for the pak builder, the others for the game-data
+pipeline and the tests). Nothing else is needed: the Lua tests run in `lupa`'s bundled Lua.
 ```bash
 mkdir BG3Mods && cd BG3Mods
 git clone https://github.com/md12ol/BG3Tools.git
@@ -26,23 +27,48 @@ python BG3Tools/tools/builds.py list            # earlier local builds; builds.p
 ```
 
 ## Test
-- **Offline**: `python LootAdvisor/tests/run.py` (add `--mutate` to prove every check can fail),
-  `python BuildAdvisor/tools/run_tests.py`. CI runs the parts that need no game data on every pull request.
+Everything below runs from the folder that holds the three checkouts.
+- **Offline**: `python LootAdvisor/tests/run.py` (add `--mutate` to prove every check can fail, `--ci` for the part
+  that needs no game data), `python LootAdvisor/tests/test_optimizer.py [--ci] [--mutate]`,
+  `python LootAdvisor/tests/test_gauntlet.py`, `python BuildAdvisor/tools/run_tests.py`,
+  `python BuildAdvisor/tools/check_hl.py` (reads Loot Advisor's rebuilt `data/cache`, so run Loot Advisor's
+  Rebuild first) and `python BG3Tools/tools/testing/test_cheat.py`. CI runs the parts that need no game data on every
+  pull request.
 - **Pre-push hook** (`hooks/pre-push`, installed by `setup.sh`): runs each repo's full local suite, including the
   tests that need game data, before every push. Missing data or a missing sibling repo is a skip, never a failure.
-- **In the game**, with the helpers in `tools/testing/` (PowerShell scripts run as
-  `powershell -NoProfile -ExecutionPolicy Bypass -File <script>`):
 
-  | Step | How |
-  |---|---|
-  | start the game | `tools/testing/launch.ps1` (through Steam, skips the Larian launcher, waits for the window) |
-  | load a save by name | `python tools/testing/saves.py <part of the save name>` prints its row in the Load Game list; then load it by hand: title screen -> Load Game -> that row |
-  | run Lua in the game | set `"Dev": true` in `LootAdvisor_settings.json` (Script Extender folder), then `echo 'print(1)' \| tools/testing/ev.sh server -` (`-m <Mod>` for another mod with the same hook) |
-  | screenshot | `tools/testing/screenshot.ps1 [-Out file.png]` (whole screen, full resolution; bring the game to the front first) |
-  | quit cleanly | `tools/testing/quit.ps1` (asks the game to close and waits; confirm in the game if it asks; never force-kill the game) |
+## Testing in the game
+The helpers are in [`tools/testing/`](tools/testing/README.md); its README has the full table and the setup of the
+dev eval hook. **Shared** helpers start, inspect and stop the game the same way for every use; **test shortcuts**
+break the game's rules for speed and are for test saves only.
 
-  Everything that depends on the screen layout (menus, clicking items, opening windows) is done by hand. Describe
-  what you checked in the pull request, with screenshots where it helps.
+| Step | How | Kind |
+|---|---|---|
+| start the game | `tools/testing/launch.ps1` (through Steam, skips the Larian launcher, waits for the window) | shared |
+| load a save by name | `python tools/testing/saves.py <part of the save name>` prints its row in the Load Game list; load it from the menu | shared |
+| run Lua in the game | set `"Dev": true` in `LootAdvisor_settings.json` (Script Extender folder), then `echo 'print(1)' \| tools/testing/ev.sh server -` (`-m <Mod>` for another mod with the same hook) | shared |
+| screenshot | `tools/testing/screenshot.ps1 [-Out file.png]` (whole screen, full resolution; bring the game to the front first) | shared |
+| quit cleanly | `tools/testing/quit.ps1` (asks the game to close and waits; never force-kill the game) | shared |
+| reach a test state fast | `python tools/testing/cheat.py tp X Y Z`, `spawn <template>`, `flag set <flag>`, `party add <character>`, `respec STR=17 ...`, `boost add <boost>`, `status <status>` | test shortcut |
+
+Loot Advisor's gauntlet (gear sets measured in the game, F9 window for manual runs) loads its Lua through the same
+eval hook; Loot Advisor's README, section "Gauntlet and optimizer", has the steps. Describe what you checked in the
+pull request, with screenshots where it helps.
+
+## Extending the mods
+- **A build** (both mods read it): add it to `BuildAdvisor/BuildAdvisor/Mods/BuildAdvisor/ScriptExtender/Lua/Shared/Builds.lua`
+  (each level's `hl` lists the exact English menu labels), run `python BuildAdvisor/tools/check_hl.py` and
+  `python BuildAdvisor/tools/run_tests.py`; give it a profile in `LootAdvisor/tools/build_profiles.py` (a test fails
+  until every Builds.lua build has one), then run Loot Advisor's Rebuild from `match_research.py` on and its tests.
+- **Item advice**: the research notes in `LootAdvisor/data/research/<character>.md` are parsed by
+  `tools/la_research.py` (the format is in its docstring) and scored by `tools/score_items.py` against each build's
+  profile in `tools/build_profiles.py`; `tools/set_notes.py` holds the "why it works" text of each set. Re-run the Rebuild steps from `match_research.py` on.
+- **A test**: Loot Advisor checks are `check_<name>(env)` functions in `LootAdvisor/tests/checks.py`, listed in
+  `CHECKS` at its end, each with a mutation in `tests/run.py` (`mutations()`) that proves it can fail. A check that
+  reads game data is listed in `LOCAL_ONLY` in `tests/run.py`. Build Advisor's mock tests are in
+  `BuildAdvisor/tools/mock_test.lua`.
+- **A game helper**: shared helpers and test shortcuts go in `tools/testing/` with a line in its README table;
+  test shortcuts build their Lua in a pure function so `test_cheat.py`-style tests can compile it without the game.
 
 ## Branches, commits and pull requests
 - **One branch per task**, named after its topic (`sets-page-header`, `tooltip-length`), cut from `main`. `main` is
