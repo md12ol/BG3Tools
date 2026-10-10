@@ -1,15 +1,19 @@
-"""Packs each mod folder under Mods/ into its own pak (Larian LSPK v18, the BG3 format):
-    Mods/BuildAdvisor -> dist/BuildAdvisor.pak   (the build advisor)
-    Mods/LootAdvisor  -> dist/LootAdvisor.pak    (best items per selected origin character: frames, markers, list)
-Inside each pak the files keep their project paths (Mods/<Folder>/meta.lsx, Mods/<Folder>/ScriptExtender/...).
+"""Packs each mod into its own pak (Larian LSPK v18, the BG3 format):
+    <project>/BuildAdvisor/{Mods,Public,Localization} -> BuildAdvisor/dist/BuildAdvisor.pak   (the build advisor)
+    <project>/LootAdvisor/{Mods,Public,Localization}  -> LootAdvisor/dist/LootAdvisor.pak     (best items per origin)
+A mod's source sits in its repo as <Mod>/Mods/<Mod>/meta.lsx (+ <Mod>/Public, <Mod>/Localization when it has them),
+the layout of other BG3 mod repositories. Inside the pak the files keep their paths below <Mod>/ (Mods/<Mod>/meta.lsx,
+Mods/<Mod>/ScriptExtender/...). A mod still in the older layout <project>/Mods/<Mod> is found too (only Mods/<Mod> is
+packed then).
 
 No dependencies: LZ4 blocks are written as literal-only sequences, which every LZ4 decoder accepts.
 Run:  python tools/build_pak.py              (builds both)
-      python tools/build_pak.py LootAdvisor  (builds only the named mod(s); any <repo>/Mods/<Mod> next to this repo)
-More mods for the no-argument build: BG3_EXTRA_MODS=ModA,ModB (each found as <repo>/Mods/<Mod> next to this repo).
-Output goes to dist/ (+ the install folder <project>/<Mod>/ of the public mods, see RELEASE / release_files.py) and
-into the build archive builds/<Mod>/ (tools/builds.py: list, restore an older build); install with tools/install_mods.py.
-(If the game or your mod manager rejects the pak, pack the Mods folder with LSLib/Divine or
+      python tools/build_pak.py LootAdvisor  (builds only the named mod(s), from any repo next to this one)
+More mods for the no-argument build: BG3_EXTRA_MODS=ModA,ModB (each found in a repo next to this one).
+Output goes to the mod repo's dist/ (gitignored): dist/<Mod>.pak and, for the public mods, the player package
+dist/<Mod>/ (pak, INSTALL.md, Handbook.html, Media/, Loot Advisor's Page/; see release_files.py). Local builds are also
+archived to builds/<Mod>/ here (tools/builds.py: list, restore an older build); install with tools/install_mods.py.
+(If the game or your mod manager rejects the pak, pack the mod folder with LSLib/Divine or
 BG3 Modder's Multitool instead - see README.)
 """
 import os
@@ -17,25 +21,40 @@ import shutil
 import struct
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # this BG3Tools checkout (dist/ is here)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # this BG3Tools checkout (builds/ is here)
 DESKTOP = os.path.dirname(ROOT)   # the folder that holds the side-by-side repos
 EXTRA = [m for m in os.environ.get("BG3_EXTRA_MODS", "").split(",") if m.strip()]
 MODS = ["BuildAdvisor", "LootAdvisor"] + [m.strip() for m in EXTRA]  # folder under Mods/ == pak name in dist/
-# every mod lives in its own repo next to this one, as <project>/Mods/<Folder>/...
+# every mod lives in its own repo next to this one
 PROJECT = {"BuildAdvisor": "BuildAdvisor", "LootAdvisor": "LootAdvisor"}
+# the top-level folders of a mod project that go into the pak
+GAME_DIRS = ("Mods", "Public", "Localization")
 
 
-def mod_src(mod):
-    """Source folder of a mod: <project>/Mods/<mod> next to this repo (a mod missing from PROJECT is searched in
-    every sibling folder, its own name first)."""
+def locate(mod):
+    """(project folder, mod root, legacy) of a mod. The mod root holds Mods/<mod>/meta.lsx: <project>/<mod>/, or
+    <project>/ itself in the older layout (legacy=True). A mod missing from PROJECT is searched in every sibling
+    folder, its own name first."""
     projects = [PROJECT[mod]] if mod in PROJECT else [mod]
     siblings = sorted(d for d in os.listdir(DESKTOP) if os.path.isdir(os.path.join(DESKTOP, d)))
     projects += [p for p in dict.fromkeys(list(PROJECT.values()) + siblings) if p not in projects]
     for p in projects:
-        src = os.path.join(DESKTOP, p, "Mods", mod)
-        if os.path.isfile(os.path.join(src, "meta.lsx")):
-            return src
-    return os.path.join(DESKTOP, projects[0], "Mods", mod)
+        proj = os.path.join(DESKTOP, p)
+        for root, legacy in ((os.path.join(proj, mod), False), (proj, True)):
+            if os.path.isfile(os.path.join(root, "Mods", mod, "meta.lsx")):
+                return proj, root, legacy
+    proj = os.path.join(DESKTOP, projects[0])
+    return proj, os.path.join(proj, mod), False
+
+
+def mod_src(mod):
+    """The mod's Mods/<mod> folder (meta.lsx, ScriptExtender/, ...)."""
+    return os.path.join(locate(mod)[1], "Mods", mod)
+
+
+def dist_dir(mod):
+    """Where builds of this mod go: dist/ in its own repo (gitignored)."""
+    return os.path.join(locate(mod)[0], "dist")
 
 SIGNATURE = b"LSPK"
 VERSION = 18
@@ -84,15 +103,19 @@ def lz4_decode(src: bytes, size: int) -> bytes:
 SKIP_EXT = (".md",)
 
 
-def collect(src):
+def collect(mod):
+    """(path in the pak, bytes) of every file the pak holds, sorted by path."""
+    _, root, legacy = locate(mod)
+    tops = [os.path.join(root, "Mods", mod)] if legacy else [os.path.join(root, d) for d in GAME_DIRS]
     files = []
-    for dirpath, _, names in os.walk(src):
-        for n in sorted(names):
-            if n.lower().endswith(SKIP_EXT):
-                continue
-            full = os.path.join(dirpath, n)
-            rel = os.path.relpath(full, os.path.dirname(os.path.dirname(src))).replace("\\", "/")  # Mods/<Folder>/...
-            files.append((rel, open(full, "rb").read()))
+    for top in tops:
+        for dirpath, _, names in os.walk(top):
+            for n in sorted(names):
+                if n.lower().endswith(SKIP_EXT):
+                    continue
+                full = os.path.join(dirpath, n)
+                rel = os.path.relpath(full, root).replace("\\", "/")   # Mods/<mod>/..., Public/<mod>/...
+                files.append((rel, open(full, "rb").read()))
     return sorted(files)
 
 
@@ -100,8 +123,8 @@ def build(mod):
     src = mod_src(mod)
     if not os.path.isfile(os.path.join(src, "meta.lsx")):
         raise SystemExit("missing %s" % os.path.join(src, "meta.lsx"))
-    out = os.path.join(ROOT, "dist", mod + ".pak")
-    files = collect(src)
+    out = os.path.join(dist_dir(mod), mod + ".pak")
+    files = collect(mod)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     header_size = 4 + struct.calcsize("<IQIBB16sH")
     with open(out, "wb") as f:
@@ -129,14 +152,13 @@ def build(mod):
     return out, files
 
 
-# Public mods ship an install folder at the repo root (<project>/<Mod>/: the pak, INSTALL.md, Handbook.html, Media/,
-# and for Loot Advisor Page/), refreshed on every build so it never goes stale; see release_files.py.
-# Mods/<Mod> stays the source.
+# Public mods get a player package next to the pak (dist/<Mod>/: the pak, INSTALL.md, Handbook.html, Media/, and for
+# Loot Advisor Page/), rebuilt on every build; CI zips the same folder for a release. See release_files.py.
 RELEASE = ("BuildAdvisor", "LootAdvisor")
 
 
 def release(mod, out):
-    """Copy a freshly built pak (+ handbook, page, media) into its repo's install folder; returns the folder or None."""
+    """Assemble the player package of a public mod around a freshly built pak; returns the folder or None."""
     if mod not in RELEASE:
         return None
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -168,10 +190,10 @@ if __name__ == "__main__":
         print("Wrote %s (%d files, %d bytes) - round-trip verified" % (out, n, os.path.getsize(out)))
         rel = release(mod, out)
         if rel:
-            print("Refreshed install folder %s" % rel)
+            print("Player package %s" % rel)
         if not os.environ.get("CI"):   # local builds are archived (tools/builds.py); CI runners are throwaway
             import builds
-            print("Archived to %s" % builds.archive(mod, out, os.path.dirname(rel) if rel else None))
+            print("Archived to %s" % builds.archive(mod, out, rel))
         for name, data in files:
             print("  %-70s %6d" % (name, len(data)))
     sys.exit(0)

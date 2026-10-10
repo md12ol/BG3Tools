@@ -13,6 +13,7 @@ permissions:
   contents: read
 env:
   RUFF_VERSION: "0.16.9"
+  PILLOW_VERSION: "11.3.0"
 
 jobs:
   lint:
@@ -80,7 +81,8 @@ jobs:
           python-version: "3.12"
       - name: Python compiles
         run: python -m compileall -q BG3Tools/tools
-      - name: Pak builder round trip + package folders complete per INSTALL.md
+      - run: pip install -q "pillow==$PILLOW_VERSION"
+      - name: Pak builder round trip + package zips checked against INSTALL.md (built into each repo's dist/)
         run: |
-          python BG3Tools/tools/ci_release.py check LootAdvisor LootAdvisor/LootAdvisor
-          python BG3Tools/tools/ci_release.py check BuildAdvisor BuildAdvisor/BuildAdvisor
+          python BG3Tools/tools/ci_release.py check LootAdvisor
+          python BG3Tools/tools/ci_release.py check BuildAdvisor
