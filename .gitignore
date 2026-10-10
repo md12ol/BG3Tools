@@ -6,7 +6,7 @@ dist/
 builds/
 # profile backup + code_snapshots zip baselines (git replaces the zips from here on)
 backups/
-# screenshots from tools/testing/screenshot.ps1
+# screenshots and snapshots of tools/testing (screenshot.ps1, crop.png, loadfail_*.png)
 screenshots/
 *.exe
 # python / editor clutter
