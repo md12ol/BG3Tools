@@ -21,8 +21,16 @@ CASES = [
     ["boost", "add", "Ability(Strength,2)"], ["boost", "remove", "AC(1)"], ["respec", "STR=17", "dex=14"],
     ["respec", "--reset"], ["status", "BLESS"], ["status", "HASTE", "3"], ["--who", "abc", "pos"],
     ["reactions", "list"], ["reactions", "apply"], ["reactions", "apply", "--policy", "never", "--set", "Interrupt_X=auto"],
-    ["reactions", "restore"],
+    ["reactions", "restore"], ["autosave", "off"], ["autosave", "restore"], ["autosave", "status"],
 ]
+
+AUTOSAVE_STUB = r"""
+local files, sw = {}, { CanAutoSave = true }
+Ext = { Utils = { GetGlobalSwitches = function() return sw end },
+        IO = { LoadFile = function(n) return files[n] end, SaveFile = function(n, t) files[n] = t end } }
+function T_switch() return sw.CanAutoSave end
+function T_reload() end   -- a save load resets the Lua state, not the files or the switch
+"""
 
 REACTION_STUB = r"""
 local store = { c1 = { Interrupt_A = "InterruptInteractionTypes(Ask,Enabled)", Interrupt_B = "InterruptInteractionTypes(Enabled)" } }
@@ -83,6 +91,20 @@ class Cheat(unittest.TestCase):
         rt.execute(self.code(["reactions", "restore"]))
         self.assertEqual(rt.eval("T_state()"), before)
         self.assertIsNone(rt.eval("CHEAT_REACTIONS_SAVED"))
+
+    @unittest.skipIf(lupa is None, "pip install lupa")
+    def test_autosave_recorded_off_and_restored(self):
+        rt = lupa.LuaRuntime()
+        rt.execute(AUTOSAVE_STUB)
+        rt.execute(self.code(["autosave", "off"]))
+        self.assertIs(rt.eval("T_switch()"), False)
+        rt.execute(self.code(["autosave", "off"]))     # twice (e.g. after a reload): the first record is kept
+        rt.execute(self.code(["autosave", "restore"]))
+        self.assertIs(rt.eval("T_switch()"), True)
+        rt.execute("Ext.Utils.GetGlobalSwitches().CanAutoSave = false")   # a player who had it off keeps it off
+        rt.execute(self.code(["autosave", "off"]))
+        rt.execute(self.code(["autosave", "restore"]))
+        self.assertIs(rt.eval("T_switch()"), False)
 
     def test_bad_respec_is_refused(self):
         with self.assertRaises(SystemExit):
