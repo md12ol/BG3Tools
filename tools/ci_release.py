@@ -8,7 +8,9 @@
   python tools/ci_release.py zip <Mod> <X.Y.Z> <pkg> <out>  zip the package folder <pkg> as <out>/<Mod>-<X.Y.Z>.zip
                                                          and check it against INSTALL.md the same way
 
-Never touches the game or its folders. Paths come from build_pak.py (sibling repos under one parent folder).
+Every form takes --repo NAME=DIR (repeatable) for a repo that is not next to this one, e.g. a git worktree being
+pushed; build_pak.py resolves the rest as sibling repos under one parent folder.
+Never touches the game or its folders.
 """
 import os
 import re
@@ -134,7 +136,7 @@ def make_zip(mod, ver, d, out_dir):
 
 
 if __name__ == "__main__":
-    a = sys.argv[1:]
+    a = build_pak.take_repo_args(sys.argv[1:])
     if len(a) == 2 and a[0] == "check" and a[1] in PUBLIC:
         sys.exit(1 if check(a[1]) else 0)
     if len(a) == 3 and a[0] == "stamp":

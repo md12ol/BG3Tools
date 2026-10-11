@@ -30,6 +30,11 @@ python tools/builds.py list [Mod]            # archived builds, newest first
 python tools/builds.py restore <Mod> <id>    # put an older build back into dist/ and install it
 python tools/ci_release.py check <Mod>       # CI: build pak + package into dist/, zip it, check the zip against INSTALL.md
 ```
+`build_pak.py`, `release_files.py` and `ci_release.py` find each mod repo next to this one. A repo checked out
+elsewhere, such as a git worktree, is named with `--repo NAME=DIR` (repeatable); its own `dist/` then gets the build:
+```bash
+python tools/ci_release.py check LootAdvisor --repo LootAdvisor=../LootAdvisor-topic
+```
 
 ## Testing in the game (`tools/testing/`)
 Helpers that start the game and click through its start screens (`launch.ps1`, `startgame.ps1`, `restart.sh`), keep

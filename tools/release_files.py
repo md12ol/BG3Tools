@@ -10,6 +10,7 @@ The package is rebuilt from scratch every time, so nothing stale survives. build
 build; CI zips the same folder as <Mod>-<X.Y.Z>.zip (ci_release.py). Run it alone to re-assemble without building:
     python tools/release_files.py                         # both mods, pak taken from dist/
     python tools/release_files.py --out C:/scratch        # write <out>/<Mod>/ instead of <project>/dist/<Mod>/
+    python tools/release_files.py --repo LootAdvisor=DIR  # a repo that is not next to this one (repeatable)
     python tools/release_files.py LootAdvisor --media     # first re-make package/Media/ from MEDIA (needs Pillow and
                                                           # the local screenshots; commit the result)
 Finally every file in the package must be named in INSTALL.md (a warning lists the ones that are not).
@@ -23,18 +24,26 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_pak  # noqa: E402
 
-DESKTOP = build_pak.DESKTOP                                          # the folder with the side-by-side repos
 PROJECT = build_pak.PROJECT
 RELEASE = build_pak.RELEASE
 
 # The shippable Sets page: every file in the source folder is copied to <install>/Page/.
 # The ship-page builder (LootAdvisor/tools/build_sets_ship.py) writes it into the mod source, which also packs it into
-# the pak. Paths are relative to the folder with the repos.
+# the pak. Each path starts with the repo it is in.
 PAGE_SOURCES = {"LootAdvisor": [os.path.join("LootAdvisor", "LootAdvisor", "Mods", "LootAdvisor", "Page")]}
 
-HANDBOOK = os.path.join(DESKTOP, "BuildAdvisor", "docs_site", "build_player_handbook.py")
 
-# package/Media/ (committed; only --media re-makes it): (source relative to the folder with the repos, file name in
+def in_repos(rel):
+    """A path that starts with a repo name, resolved through build_pak.repo_dir (so --repo applies to it)."""
+    project, _, rest = rel.replace("\\", "/").partition("/")
+    return os.path.join(build_pak.repo_dir(project), rest)
+
+
+def handbook():
+    return os.path.join(build_pak.repo_dir("BuildAdvisor"), "docs_site", "build_player_handbook.py")
+
+
+# package/Media/ (committed; only --media re-makes it): (source starting with its repo name, file name in
 # Media/, edit). Branding = option 1 "Gilded Panel". The screenshots are local files, not in any repository.
 # Screenshots are re-encoded as JPEG (2560x1600, quality 85) unless an edit crops them.
 # edit: None (copy as is), "jpg" (re-encode), or a dict {"crop": box, "cover": [boxes painted with the window colour]}.
@@ -68,7 +77,7 @@ MEDIA = {
 
 
 def project_dir(mod):
-    return os.path.join(DESKTOP, PROJECT[mod])
+    return build_pak.repo_dir(PROJECT[mod])
 
 
 def package_src(mod):
@@ -83,7 +92,7 @@ def package_dir(mod, out=None):
 def copy_page(mod, dst_dir):
     written = []
     for rel in PAGE_SOURCES.get(mod, []):
-        src = os.path.join(DESKTOP, rel)
+        src = in_repos(rel)
         if not os.path.isdir(src):
             print("  WARNING: page source missing: %s" % src)
             continue
@@ -98,10 +107,11 @@ def copy_page(mod, dst_dir):
 
 def make_handbook(mod, dst_dir):
     """Run the handbook generator; on a failed leak check no Handbook.html is written (the package check then fails)."""
-    if not os.path.isfile(HANDBOOK):
-        print("  WARNING: handbook generator missing: %s" % HANDBOOK)
+    gen = handbook()
+    if not os.path.isfile(gen):
+        print("  WARNING: handbook generator missing: %s" % gen)
         return []
-    r = subprocess.run([sys.executable, HANDBOOK, "--mod", mod, "--out", os.path.join(dst_dir, "Handbook.html"),
+    r = subprocess.run([sys.executable, gen, "--mod", mod, "--out", os.path.join(dst_dir, "Handbook.html"),
                         "--media", os.path.join(package_src("LootAdvisor"), "Media")],
                        capture_output=True, text=True)
     sys.stdout.write("".join("  " + ln + "\n" for ln in r.stdout.splitlines()))
@@ -123,7 +133,7 @@ def make_media(mod):
             os.remove(os.path.join(media, name))
     written = []
     for rel, name, edit in MEDIA.get(mod, []):
-        src, dst = os.path.join(DESKTOP, rel), os.path.join(media, name)
+        src, dst = in_repos(rel), os.path.join(media, name)
         if not os.path.isfile(src):
             print("  WARNING: media source missing: %s" % src)
             continue
@@ -202,7 +212,8 @@ if __name__ == "__main__":
     ap.add_argument("mods", nargs="*", default=list(RELEASE))
     ap.add_argument("--out", help="write <out>/<Mod>/ instead of <project>/dist/<Mod>/")
     ap.add_argument("--media", action="store_true", help="re-make package/Media/ from MEDIA first")
-    a = ap.parse_args()
+    ap.add_argument("--repo", action="append", metavar="NAME=DIR", help="a repo that is not next to this one")
+    a = ap.parse_args(build_pak.take_repo_args(sys.argv[1:]))
     for m in a.mods:
         pak = os.path.join(build_pak.dist_dir(m), m + ".pak")
         print("%s:" % m)
