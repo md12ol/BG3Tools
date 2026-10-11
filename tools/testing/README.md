@@ -16,8 +16,8 @@ Use the shortcuts on test saves only; saving afterwards keeps their changes.
 | `restart.sh` | shared | with the game closed: install the local builds (`../install_mods.py`), `startgame.ps1`, and for `continue` wait for the load |
 | `borderless.ps1` | shared | check the game runs borderless, never windowed; `-Fix` (game closed) sets it in `graphicSettings.lsx` and keeps the old file |
 | `saves.py` | shared | list saves as the Load Game list orders them, to find a save's row by name |
-| `loadsave.sh` | shared | load a save by folder suffix or name from the main menu or the in-game menu and wait until it is loaded |
-| `waitload.sh` | shared | confirm a load (dev eval hook, or a signal file a mod rewrites) and accept the Mod Verification dialog |
+| `loadsave.sh` | shared | load a save by folder suffix or name from the main menu or the in-game menu (scrolling the Load list to rows below its fold) and wait until it is loaded |
+| `waitload.sh` | shared | confirm a load (dev eval hook, or a signal file a mod rewrites) and accept the Mod Verification and "Different Mod Settings" dialogs |
 | `findrow.py` | shared | find a save's row in a Load list screenshot from a template image (loadsave.sh; needs numpy and Pillow) |
 | `ev.sh` | shared | run Lua in the game through a mod's dev eval hook and print the answer |
 | `screenshot.ps1` | shared | full-resolution screenshot of the primary screen, or of the game window only (`-Window`) |
@@ -90,6 +90,8 @@ python tools/testing/cheat.py autosave off             # no autosave during a te
   release use the Devel channel (`ScriptExtenderUpdaterConfig.json` with `{"UpdateChannel": "Devel"}` in the game's
   `bin` folder). The Devel build shows an "experimental version" dialog at every start: click Accept.
 - After a pak rebuild, loading a save shows the game's "Mod Verification" dialog: click Start Game.
+- Loading a save made with another mod list enabled shows "Different Mod Settings": click Yes. `waitload.sh` clicks
+  it where OCR reads "Yes", else at 602,497 in the 1389x868 frame (`BG3_MODSETTINGS_YES_XY=x,y` overrides).
 - The Script Extender console (`ScriptExtenderSettings.json` in `bin` with `{"CreateConsole": true}`) shows the mods'
   log lines and accepts `!la_dev` and the other console commands.
 

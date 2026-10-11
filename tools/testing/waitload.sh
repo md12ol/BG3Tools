@@ -4,7 +4,8 @@
 #   arm   just before the click that starts the load: marks the running game session through the dev eval hook and
 #         notes the signal file's time. --no-eval skips the mark (at the main menu there is no session to mark).
 #   wait  after the click: polls until the load is confirmed (TIMEOUT s, default 120). Meanwhile it accepts the game's
-#         Mod Verification dialog (shown after a pak rebuild changed the save's mod list), recognised by its text.
+#         Mod Verification dialog (shown after a pak rebuild changed the save's mod list) and its "Different Mod
+#         Settings" dialog (the save was made with other mods enabled), recognised by their text.
 # How a load is confirmed:
 #   BG3_LOAD_SIGNAL_FILE set (environment): a file a mod rewrites while a level runs. The load counts once the file
 #     changed after arm and every "&&"-separated extended regex of EXPECT matches one of its lines; without EXPECT,
@@ -53,15 +54,24 @@ expect_ok() {   # every "&&"-separated regex of $EXPECT matches a line of the si
   done
   return 0
 }
-# The Mod Verification dialog stops the load until "Start Game" is clicked: clicked where OCR found it, else at its
-# usual spot.
-modverif() {
-  r=$(ps1 ocrscreen.ps1 -Find "Mod Verification")
-  case "$r" in found*) ;; *) return 1;; esac
-  b=$(ps1 ocrscreen.ps1 -Find "Start Game")
-  case "$b" in found*) set -- $b; xy="$2,$3";; *) xy="639,765";; esac
+# Two dialogs stop the load until a button is clicked, each recognised by its title and clicked where OCR reads the
+# button, else at its usual spot: Mod Verification -> "Start Game", and "Different Mod Settings" (the save was made
+# with another mod list) -> "Yes" (BG3_MODSETTINGS_YES_XY overrides that spot). No key is known to answer either.
+# One OCR pass reads both; "x y text" lines in the 1389x868 frame.
+load_dialog() {
+  o=$(ps1 ocrscreen.ps1 -All)
+  if echo "$o" | grep -qi "mod verification"; then
+    what="Mod Verification dialog -> Start Game"; def=639,765
+    xy=$(echo "$o" | awk 'tolower($0) ~ /start game/ {print $1 "," $2; exit}')
+  elif echo "$o" | grep -qi "different mod settings"; then
+    what="Different Mod Settings dialog -> Yes"; def=${BG3_MODSETTINGS_YES_XY:-602,497}
+    xy=$(echo "$o" | awk 'NF == 3 && tolower($3) == "yes" {print $1 "," $2; exit}')
+  else
+    return 1
+  fi
+  [ -z "$xy" ] && xy=$def
   ps1 go.ps1 -Seq "$xy" -WaitMs 500 > /dev/null
-  echo "Mod Verification dialog -> Start Game ($xy)" >&2
+  echo "$what ($xy)" >&2
   return 0
 }
 last_check=0
@@ -85,12 +95,12 @@ while [ "$(elapsed)" -lt "$LIMIT" ]; do
   sleep 1
   if loaded; then
     # confirmed only with no dialog on screen; a dialog just accepted means the load is still running
-    if modverif; then m0=$(mtime); last_check=$(date +%s); continue; fi
+    if load_dialog; then m0=$(mtime); last_check=$(date +%s); continue; fi
     echo "load confirmed after $(elapsed) s"
     [ -n "$SIG" ] && [ -n "${BG3_LOAD_SHOW:-}" ] && grep -E "$BG3_LOAD_SHOW" "$SIG" | cut -c1-90
     exit 0
   fi
-  dialog_due && modverif
+  dialog_due && load_dialog
 done
 mkdir -p "$SHOTS"; shot="loadfail_$(date +%H%M%S).png"
 ps1 crop.ps1 -Out "$(cygpath -w "$SHOTS/$shot")" > /dev/null
