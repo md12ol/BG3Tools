@@ -12,6 +12,8 @@ valid but stored uncompressed (literal-only LZ4 blocks), about twice the size, a
 Run:  python tools/build_pak.py              (builds both)
       python tools/build_pak.py LootAdvisor  (builds only the named mod(s), from any repo next to this one)
 More mods for the no-argument build: BG3_EXTRA_MODS=ModA,ModB (each found in a repo next to this one).
+A repo that is not next to this one (a git worktree, say) is named with --repo NAME=DIR, repeatable:
+      python tools/build_pak.py LootAdvisor --repo LootAdvisor=../LootAdvisor-topic
 Output goes to the mod repo's dist/ (gitignored): dist/<Mod>.pak and, for the public mods, the player package
 dist/<Mod>/ (pak, INSTALL.md, Handbook.html, Media/, Loot Advisor's Page/; see release_files.py). Local builds are also
 archived to builds/<Mod>/ here (tools/builds.py: list, restore an older build); install with tools/install_mods.py.
@@ -36,21 +38,52 @@ MODS = ["BuildAdvisor", "LootAdvisor"] + [m.strip() for m in EXTRA]  # folder un
 PROJECT = {"BuildAdvisor": "BuildAdvisor", "LootAdvisor": "LootAdvisor"}
 # the top-level folders of a mod project that go into the pak
 GAME_DIRS = ("Mods", "Public", "Localization")
+# repo folders by project name that override <DESKTOP>/<name>; filled from --repo NAME=DIR
+REPO_DIRS = {}
+
+
+def repo_dir(project):
+    return REPO_DIRS.get(project) or os.path.join(DESKTOP, project)
+
+
+def take_repo_args(argv):
+    """Moves every --repo NAME=DIR of argv into REPO_DIRS and returns the other arguments. A DIR that is not a folder
+    is an error rather than a fallback, so a build never quietly uses the next-door checkout instead."""
+    rest, i = [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--repo" or a.startswith("--repo="):
+            spec = a[len("--repo="):] if a.startswith("--repo=") else (argv[i + 1] if i + 1 < len(argv) else "")
+            i += 1 if a.startswith("--repo=") else 2
+            name, sep, path = spec.partition("=")
+            if not sep or not name or not os.path.isdir(path):
+                raise SystemExit("--repo wants NAME=DIR with an existing DIR, got %r" % spec)
+            REPO_DIRS[name] = os.path.abspath(path)
+        else:
+            rest.append(a)
+            i += 1
+    return rest
 
 
 def locate(mod):
     """(project folder, mod root, legacy) of a mod. The mod root holds Mods/<mod>/meta.lsx: <project>/<mod>/, or
     <project>/ itself in the older layout (legacy=True). A mod missing from PROJECT is searched in every sibling
-    folder, its own name first."""
+    folder, its own name first; a project given with --repo is never searched past, since a sibling folder may be
+    another checkout of the same repo."""
     projects = [PROJECT[mod]] if mod in PROJECT else [mod]
+    if projects[0] in REPO_DIRS:
+        proj = REPO_DIRS[projects[0]]
+        root = os.path.join(proj, mod)
+        legacy = not os.path.isdir(root) and os.path.isfile(os.path.join(proj, "Mods", mod, "meta.lsx"))
+        return proj, proj if legacy else root, legacy
     siblings = sorted(d for d in os.listdir(DESKTOP) if os.path.isdir(os.path.join(DESKTOP, d)))
     projects += [p for p in dict.fromkeys(list(PROJECT.values()) + siblings) if p not in projects]
     for p in projects:
-        proj = os.path.join(DESKTOP, p)
+        proj = repo_dir(p)
         for root, legacy in ((os.path.join(proj, mod), False), (proj, True)):
             if os.path.isfile(os.path.join(root, "Mods", mod, "meta.lsx")):
                 return proj, root, legacy
-    proj = os.path.join(DESKTOP, projects[0])
+    proj = repo_dir(projects[0])
     return proj, os.path.join(proj, mod), False
 
 
@@ -208,7 +241,7 @@ def verify(out, expected):
 if __name__ == "__main__":
     if lz4 is None:
         print("WARNING: the lz4 package is missing (pip install lz4); paks are written uncompressed", file=sys.stderr)
-    for mod in sys.argv[1:] or MODS:
+    for mod in take_repo_args(sys.argv[1:]) or MODS:
         out, files = build(mod)
         n = verify(out, files)
         print("Wrote %s (%d files, %d bytes) - round-trip verified" % (out, n, os.path.getsize(out)))
