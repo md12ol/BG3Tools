@@ -68,8 +68,14 @@ def take_repo_args(argv):
 def locate(mod):
     """(project folder, mod root, legacy) of a mod. The mod root holds Mods/<mod>/meta.lsx: <project>/<mod>/, or
     <project>/ itself in the older layout (legacy=True). A mod missing from PROJECT is searched in every sibling
-    folder, its own name first."""
+    folder, its own name first; a project given with --repo is never searched past, since a sibling folder may be
+    another checkout of the same repo."""
     projects = [PROJECT[mod]] if mod in PROJECT else [mod]
+    if projects[0] in REPO_DIRS:
+        proj = REPO_DIRS[projects[0]]
+        root = os.path.join(proj, mod)
+        legacy = not os.path.isdir(root) and os.path.isfile(os.path.join(proj, "Mods", mod, "meta.lsx"))
+        return proj, proj if legacy else root, legacy
     siblings = sorted(d for d in os.listdir(DESKTOP) if os.path.isdir(os.path.join(DESKTOP, d)))
     projects += [p for p in dict.fromkeys(list(PROJECT.values()) + siblings) if p not in projects]
     for p in projects:
