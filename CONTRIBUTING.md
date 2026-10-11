@@ -16,7 +16,8 @@ sh BG3Tools/setup.sh
 ```
 `setup.sh` clones LootAdvisor and BuildAdvisor next to BG3Tools (the scripts find each other as siblings:
 `BG3Mods/BG3Tools`, `BG3Mods/LootAdvisor`, `BG3Mods/BuildAdvisor`) and installs the pre-push hook in all three. Keep
-the folder names. Loot Advisor's game data is rebuilt from your own game install; see its README.
+the folder names. Loot Advisor's game data is rebuilt from your own game install; see its CONTRIBUTING.md, section
+"Rebuild".
 
 ## Build and install
 ```bash
@@ -54,8 +55,8 @@ break the game's rules for speed and are for test saves only.
 | reach a test state fast | `python tools/testing/cheat.py tp X Y Z`, `spawn <template>`, `flag set <flag>`, `party add <character>`, `respec STR=17 ...`, `boost add <boost>`, `status <status>` | test shortcut |
 
 Loot Advisor's gauntlet (gear sets measured in the game, F9 window for manual runs) loads its Lua through the same
-eval hook; Loot Advisor's README, section "Gauntlet and optimizer", has the steps. Describe what you checked in the
-pull request, with screenshots where it helps.
+eval hook; Loot Advisor's CONTRIBUTING.md, section "Gauntlet and optimizer", has the steps. Describe what you
+checked in the pull request, with screenshots where it helps.
 
 ## Extending the mods
 - **A build** (both mods read it): add it to `BuildAdvisor/BuildAdvisor/Mods/BuildAdvisor/ScriptExtender/Lua/Shared/Builds.lua`

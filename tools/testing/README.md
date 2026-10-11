@@ -119,4 +119,4 @@ Never send layout queries such as `FrameworkElement:PointToScreen` through the e
 
 ## Loot Advisor's gauntlet
 The gauntlet measures gear sets in the game; its tools are in Loot Advisor's `tools/gauntlet/` and use the same eval
-hook (`tools/gauntlet/engine.py`). Loot Advisor's README, section "Gauntlet and optimizer", lists the steps.
+hook (`tools/gauntlet/engine.py`). Loot Advisor's CONTRIBUTING.md, section "Gauntlet and optimizer", lists the steps.
