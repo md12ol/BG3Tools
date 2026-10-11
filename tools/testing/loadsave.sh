@@ -1,10 +1,10 @@
 #!/bin/sh
 # loadsave.sh SAVE [menu|ingame] [EXPECT]: load a save by its folder suffix (QuickSave_38, AutoSave_12) or its name,
 # from the main menu (menu) or from the in-game menu (ingame, default), and wait until it is loaded (waitload.sh: the
-# dev eval hook, or BG3_LOAD_SIGNAL_FILE + EXPECT, see there). Prints "loaded SAVE (...)"; exit 2 when the save's
-# row was not found or the load was not confirmed.
+# dev eval hook, or BG3_LOAD_SIGNAL_FILE + EXPECT, see there; it also answers the Mod Verification and "Different Mod
+# Settings" dialogs). Prints "loaded SAVE (...)"; exit 2 when the save's row was not found or the load was not confirmed.
 # The row is found by its label with OCR (QuickSave_10 is listed as "Quicksave 10 - <region>", a named save by its
-# name); a folded campaign group is unfolded first. A template image tpl_<save name>.png (lower case, spaces as _) in
+# name), scrolling the list when the row is below its fold; a folded campaign group is unfolded first. A template image tpl_<save name>.png (lower case, spaces as _) in
 # BG3_TEMPLATE_DIR (default: BG3_SHOT_DIR) is matched instead when present (findrow.py, needs numpy and Pillow).
 # From the main menu the row computed from the folder order is the last resort (row 0 at y=169, 27.3 px per row).
 # Clicks are in the 1389x868 frame; the game must run borderless or fullscreen (borderless.ps1).
@@ -32,10 +32,11 @@ else
 fi
 tpl="$TPLS/tpl_$(echo "$1" | tr ' A-Z' '_a-z').png"
 # The Load list is grouped by campaign (others folded), so a row computed from the folder order can land on another
-# save of the same campaign. ocr_row prints the frame y of the row whose label matches, or "none".
-ocr_row() {
+# save of the same campaign. match_row reads OCR lines ("x y text") and prints the frame y of the row whose label
+# matches, or "none"; ocr_row does it for the screen as it is now.
+match_row() {
   want=$(echo "$1" | sed -E 's/^QuickSave_/Quicksave /; s/^AutoSave_/Autosave /')
-  ps1 ocrscreen.ps1 -All | python -c "
+  python -c "
 import re, sys
 def norm(s): return re.sub(r'[^a-z0-9]', '', s.lower().replace('l', '1').replace('i', '1').replace('o', '0'))
 want = sys.argv[1]
@@ -49,6 +50,25 @@ if not hit and ' - ' in want:
 print(hit[0][1] if hit else 'none')
 " "$want"
 }
+ocr_row() { ps1 ocrscreen.ps1 -All | match_row "$1"; }
+# A row below the list's fold (newer saves above it) is found by scrolling: to the top, then down about two thirds of
+# the visible list at a time, until the label shows or the list stops moving (its OCR lines unchanged). On a miss the
+# list is left at the top, where the computed row of the menu path counts from.
+scan_row() {
+  r=$(ocr_row "$1"); [ "$r" != none ] && { echo "$r"; return; }
+  ps1 wheel.ps1 -Notches 60 -X 400 -Y 500 > /dev/null; sleep 0.6
+  prev=""
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    page=$(ps1 ocrscreen.ps1 -All)
+    r=$(echo "$page" | match_row "$1"); [ "$r" != none ] && { echo "$r"; return; }
+    list=$(echo "$page" | awk '$1 < 600 && $2 > 120')
+    [ "$list" = "$prev" ] && break
+    prev=$list
+    ps1 wheel.ps1 -Notches -15 -X 400 -Y 500 > /dev/null; sleep 0.6
+  done
+  ps1 wheel.ps1 -Notches 60 -X 400 -Y 500 > /dev/null; sleep 0.6
+  echo none
+}
 if [ ! -f "$tpl" ]; then
   # the list can take well over 6 s to fill: read it until the label shows
   r=none
@@ -61,13 +81,14 @@ if [ ! -f "$tpl" ]; then
     ps1 ocrscreen.ps1 -Find "Save Files" | grep -q found && [ -n "$(ps1 ocrscreen.ps1 -All | awk '$1 < 600 && $2 > 150' | head -1)" ] && break
     sleep 2
   done
+  [ "$r" = none ] && r=$(scan_row "$1")
   if [ "$r" = none ]; then
     # the save's campaign may be a folded group: unfold it by its header (the folder name before "-<digits>__")
     camp=$(ls "$S"/*/Savegames/Story/ | grep "__$1\$" | head -1 | sed -E 's/-[0-9]+__.*$//')
-    h=$([ -n "$camp" ] && ocr_row "$camp")
+    h=$([ -n "$camp" ] && scan_row "$camp")
     if [ -n "$h" ] && [ "$h" != none ]; then
       ps1 clickseq.ps1 -Seq "235,$h" > /dev/null; sleep 1.5
-      r=$(ocr_row "$1")
+      r=$(scan_row "$1")
     fi
   fi
   if [ "$r" != none ]; then y=$r; notches="ocr"
