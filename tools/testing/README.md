@@ -16,6 +16,7 @@ Use the shortcuts on test saves only; saving afterwards keeps their changes.
 | `restart.sh` | shared | with the game closed: install the local builds (`../install_mods.py`), `startgame.ps1`, and for `continue` wait for the load |
 | `borderless.ps1` | shared | check the game runs borderless, never windowed; `-Fix` (game closed) sets it in `graphicSettings.lsx` and keeps the old file |
 | `saves.py` | shared | list saves as the Load Game list orders them, to find a save's row by name |
+| `testcampaign.py` | shared | copy a save into a separate test campaign (its own entry in the Load Game list, every copy into the same campaign name grouped together); `list` shows the campaigns. Run with the game closed or at the main menu |
 | `loadsave.sh` | shared | load a save by folder suffix or name from the main menu or the in-game menu (scrolling the Load list to rows below its fold) and wait until it is loaded |
 | `waitload.sh` | shared | confirm a load (dev eval hook, or a signal file a mod rewrites) and accept the Mod Verification and "Different Mod Settings" dialogs |
 | `findrow.py` | shared | find a save's row in a Load list screenshot from a template image (loadsave.sh; needs numpy and Pillow) |
@@ -118,6 +119,20 @@ before Confirm or `finish`. The commands that need several calls (`abilities`, `
 until the screen reports them done, and exit with 1 when it does not. Skills take the internal name (`SleightOfHand`).
 Never send layout queries such as `FrameworkElement:PointToScreen` through the eval hook: they deadlock the game.
 `python tools/testing/test_respec.py` checks the Lua offline (CI runs it).
+
+## Test campaign
+Test saves copied into their own campaign sit together under one entry of the Load Game list instead of between the
+campaign's other saves. The copy gets a campaign id made from the campaign name, the campaign name as its leader
+name, a new game id, and is a manual save named `--name`; the world and the story are copied unchanged, and the
+source save is only read.
+```bash
+python tools/testing/testcampaign.py list                                   # campaigns: name, id, saves, newest
+python tools/testing/testcampaign.py copy "<save folder>" --campaign "Test Arena" --name "Act 2 end"
+python tools/testing/testcampaign.py verify "<folder>/<name>.lsv"           # file list, checksum, metadata
+```
+Copy with the game closed or at the main menu, then open the Load Game list. A save made in the game after loading
+a copy may carry the party leader's real name again (unverified). `python tools/testing/test_testcampaign.py` tests
+the copy on synthetic saves (CI runs it; needs `pip install lz4 zstandard`).
 
 ## Loot Advisor's gauntlet
 The gauntlet measures gear sets in the game; its tools are in Loot Advisor's `tools/gauntlet/` and use the same eval
