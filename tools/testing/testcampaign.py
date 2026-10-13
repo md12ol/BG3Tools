@@ -2,7 +2,8 @@
 
   python tools/testing/testcampaign.py list [--root DIR]
         every campaign in the save folder: name, campaign id, number of saves, newest save
-  python tools/testing/testcampaign.py copy SRC --campaign "Test Arena" --name "Act 2 end" [--root DIR] [--keep-time]
+  python tools/testing/testcampaign.py copy SRC --campaign "Test Arena" --name "Act 2 end" [--root DIR]
+                                         [--keep-time] [--clear-tamper-flag]
         copy the save folder SRC into a new save of campaign "Test Arena" (a folder name below the save folder or a path)
   python tools/testing/testcampaign.py verify LSV
         check a .lsv package: file list, checksum, metadata
@@ -13,7 +14,8 @@ party leader written next to it. `copy` writes a new save folder whose package c
   - leader name   the campaign name (the Load list shows it as the campaign's title);
   - game id       new and random for each copy;
   - save type     a manual save named --name (the package, its screenshot and SaveInfo.json all use that name);
-  - save time     now (newest in the campaign), or the source's with --keep-time.
+  - save time     now (newest in the campaign), or the source's with --keep-time;
+  - sanity flag   the source's, or true with --clear-tamper-flag.
 Everything else (the world, the story, the party) is copied byte for byte. The source folder is only read.
 --root defaults to the game's Story save folder; the game must be closed or at the main menu to see a new save
 (it reads the folder when the Load Game list opens).
@@ -21,9 +23,14 @@ Everything else (the world, the story, the party) is copied byte for byte. The s
 Save package format (LSPK version 18): 40-byte header (magic, version, file list offset and size, flags, priority,
 checksum, part count), file data from offset 40 with each file starting a multiple of 64 bytes after it (gaps filled
 with 0xAD), then the file list (count, compressed size, LZ4 block of 272-byte entries). The checksum is the MD5 of
-every file's uncompressed contents in the order they sit in the package, each byte of the digest plus one.
+every file's uncompressed contents taken in file name order, ignoring case, each byte of the digest plus one; the
+game lays the files out in that same order and lists them in another.
 The metadata is meta.lsf (LSF version 7) in the package; its node MetaData holds GameSessionID (the campaign id),
-GameID, LeaderName, SaveTime, SaveGameType (0 manual, 1 quick, 2 auto) and SaveGameID (-1 for manual saves).
+GameID, LeaderName, SaveTime, SaveGameType (0 manual, 1 quick, 2 auto), SaveGameID (-1 for manual saves) and Sanity.
+
+Tamper warning: on load the game recomputes the checksum and shows "The savegame has detected tampering or
+corruption" when it differs from the header or when Sanity is false. After that warning every save of the session is
+written with Sanity false, so the warning follows the campaign; --clear-tamper-flag writes a copy with Sanity true.
 Needs the lz4 and zstandard packages (pip install lz4 zstandard).
 """
 import argparse
@@ -53,6 +60,11 @@ BAD_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 # ------------------------------------------------------------------------------------------------ LSPK packages
+def game_order(name):
+    """Sort key of a file in a save package: the game compares names one lowercased character at a time."""
+    return "".join(c.lower() if len(c.lower()) == 1 else c for c in name)
+
+
 class Entry:
     def __init__(self, name, offset, flags, size_on_disk, size):
         self.name, self.offset, self.flags = name, offset, flags
@@ -84,7 +96,7 @@ def _compress(flags, data):
     if method == 2:
         return lz4.block.compress(data, store_size=False)
     if method == 3:
-        return zstandard.ZstdCompressor().compress(data)
+        return zstandard.ZstdCompressor(level=9).compress(data)
     raise ValueError("unknown compression method %d" % method)
 
 
@@ -120,30 +132,31 @@ class Package:
         raise KeyError(name)
 
     def checksum(self):
-        """The header checksum this package's contents should carry."""
+        """The header checksum the game expects for this package's contents."""
         h = hashlib.md5()
-        for e in sorted(self.entries, key=lambda x: x.offset):
+        for e in sorted(self.entries, key=lambda x: game_order(x.name)):
             h.update(self.read(e))
         return bytes((b + 1) & 0xFF for b in h.digest())
 
 
-def write_package(path, files, flags=0, priority=0, list_order=None):
-    """files: [(name, entry flags, stored bytes, uncompressed bytes)] in data order. list_order: indices into files
-    in the order the file list names them (default: data order); the game's saves list files in another order."""
+def write_package(path, files, flags=0, priority=0):
+    """files: [(name, entry flags, stored bytes, uncompressed bytes)] in the order the file list names them. The data
+    is laid out and checksummed in game order, as the game writes its saves."""
     out = bytearray(HEADER.size)
     md5 = hashlib.md5()
-    rows = []
-    for name, eflags, stored, plain in files:
+    rows = [b""] * len(files)
+    for i in sorted(range(len(files)), key=lambda i: game_order(files[i][0])):
+        name, eflags, stored, plain = files[i]
         out += PAD * (-(len(out) - HEADER.size) % ALIGN)
         off = len(out)
         out += stored
         md5.update(plain)
         size = len(plain) if eflags & 0x0F else 0
-        rows.append(ENTRY.pack(name.encode("utf-8"), off & 0xFFFFFFFF, off >> 32, 0, eflags, len(stored), size))
+        rows[i] = ENTRY.pack(name.encode("utf-8"), off & 0xFFFFFFFF, off >> 32, 0, eflags, len(stored), size)
     out += PAD * (-(len(out) - HEADER.size) % ALIGN)
     lo = len(out)
-    table = b"".join(rows[i] for i in (range(len(rows)) if list_order is None else list_order))
-    packed = lz4.block.compress(table, store_size=False)
+    table = b"".join(rows)
+    packed = lz4.block.compress(table, mode="high_compression", compression=9, store_size=False)
     out += struct.pack("<II", len(files), len(packed)) + packed
     digest = bytes((b + 1) & 0xFF for b in md5.digest())
     HEADER.pack_into(out, 0, b"LSPK", 18, lo, len(out) - lo, flags, priority, digest, 1)
@@ -299,11 +312,12 @@ def find_lsv(folder):
 def read_meta(lsv):
     p = Package(lsv)
     return Lsf(p.read(p.entry("meta.lsf"))).values(
-        ["GameSessionID", "GameID", "LeaderName", "SaveTime", "SaveGameType", "SaveGameID", "Level"])
+        ["GameSessionID", "GameID", "LeaderName", "SaveTime", "SaveGameType", "SaveGameID", "Level", "Sanity"])
 
 
-def copy_save(src, root, campaign, name, keep_time=False, now=None):
-    """Writes the copy and returns its folder. src is only read."""
+def copy_save(src, root, campaign, name, keep_time=False, now=None, clear_tamper_flag=False):
+    """Writes the copy and returns its folder. src is only read. clear_tamper_flag also accepts a source whose
+    checksum is wrong, which the game treats as tampering too."""
     for label, text in (("campaign", campaign), ("name", name)):
         if not text.strip() or BAD_NAME.search(text) or text != text.strip() or text.endswith("."):
             raise ValueError("--%s %r is not usable in a file name" % (label, text))
@@ -311,8 +325,9 @@ def copy_save(src, root, campaign, name, keep_time=False, now=None):
         raise ValueError("--campaign may not contain '__' (it separates the folder name's parts)")
     src_lsv = find_lsv(src)
     pkg = Package(src_lsv)
-    if pkg.md5 != pkg.checksum():
-        raise ValueError("%s: checksum does not match its contents; not copying a damaged save" % src_lsv)
+    if pkg.md5 != pkg.checksum() and not clear_tamper_flag:
+        raise ValueError("%s: checksum does not match its contents (the game calls it tampered); not copying it "
+                         "without --clear-tamper-flag" % src_lsv)
     old_stem = os.path.splitext(os.path.basename(src_lsv))[0]
     meta = Lsf(pkg.read(pkg.entry("meta.lsf")))
     t = meta.get("SaveTime") if keep_time else int(now if now is not None else time.time())
@@ -322,9 +337,10 @@ def copy_save(src, root, campaign, name, keep_time=False, now=None):
     meta.set("SaveTime", t)
     meta.set("SaveGameType", 0)
     meta.set("SaveGameID", -1)
+    if clear_tamper_flag:
+        meta.set("Sanity", True)
     files = []
-    data_order = sorted(pkg.entries, key=lambda x: x.offset)
-    for e in data_order:
+    for e in pkg.entries:
         ename = e.name
         if e.name == "meta.lsf":
             plain = meta.dump()
@@ -341,14 +357,13 @@ def copy_save(src, root, campaign, name, keep_time=False, now=None):
             files.append((ename, e.flags, pkg.raw(e), pkg.read(e)))
             continue
         files.append((ename, e.flags, _compress(e.flags, plain), plain))
-    list_order = [data_order.index(e) for e in pkg.entries]
     dest = os.path.join(root, "%s-%s__%s" % (campaign, folder_number(t), name))
     if os.path.exists(dest):
         raise ValueError("%s already exists" % dest)
     os.makedirs(dest)
     try:
         lsv = os.path.join(dest, name + ".lsv")
-        write_package(lsv, files, pkg.flags, pkg.priority, list_order)
+        write_package(lsv, files, pkg.flags, pkg.priority)
         webp = os.path.join(src, old_stem + ".WebP")
         if os.path.isfile(webp):
             with open(webp, "rb") as f, open(os.path.join(dest, name + ".WebP"), "xb") as g:
@@ -390,6 +405,8 @@ def main(argv):
     p.add_argument("--name", required=True)
     p.add_argument("--root", default=STORY, help="save folder to write into (default: the game's Story folder)")
     p.add_argument("--keep-time", action="store_true", help="keep the source's save time instead of now")
+    p.add_argument("--clear-tamper-flag", action="store_true",
+                   help="write the copy as not tampered even when the source is flagged")
     p = sub.add_parser("verify", help="check a .lsv package")
     p.add_argument("lsv")
     a = ap.parse_args(argv)
@@ -406,16 +423,23 @@ def main(argv):
         if not os.path.isdir(src):
             print("no save folder %s" % a.src, file=sys.stderr)
             return 1
-        dest = copy_save(src, a.root, a.campaign, a.name, keep_time=a.keep_time)
+        dest = copy_save(src, a.root, a.campaign, a.name, keep_time=a.keep_time,
+                         clear_tamper_flag=a.clear_tamper_flag)
         print("wrote %s (campaign id %s)" % (dest, campaign_id(a.campaign)))
+        if read_meta(find_lsv(dest))["Sanity"] is False:
+            print("the source is flagged as tampered and so is the copy; --clear-tamper-flag clears it",
+                  file=sys.stderr)
         return 0
     pkg = Package(a.lsv)
     ok = pkg.md5 == pkg.checksum()
     for e in pkg.entries:
         print("%10d  %#04x  %s" % (e.size or e.size_on_disk, e.flags, e.name))
     print("checksum %s" % ("ok" if ok else "WRONG (header %s, contents %s)" % (pkg.md5.hex(), pkg.checksum().hex())))
-    print(json.dumps(read_meta(a.lsv), indent=1))
-    return 0 if ok else 1
+    meta = read_meta(a.lsv)
+    print(json.dumps(meta, indent=1))
+    if meta["Sanity"] is False:
+        print("flagged as tampered (Sanity false): the game warns on load")
+    return 0 if ok and meta["Sanity"] is not False else 1
 
 
 if __name__ == "__main__":
