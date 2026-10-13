@@ -157,6 +157,14 @@ class TestCampaign(unittest.TestCase):
         self.assertEqual(len(groups[tc.campaign_id("Test Arena")]["saves"]), 2)
         self.assertEqual(groups["c" * 36]["names"], {"Tester"})
 
+    def test_copy_of_a_copy(self):
+        first = tc.copy_save(self.src, self.root, "Test Arena", "base", now=1000000000)
+        second = tc.copy_save(first, self.root, "Test Arena", "built", now=1000000060)
+        m1, m2 = (tc.read_meta(tc.find_lsv(d)) for d in (first, second))
+        self.assertEqual(m1["GameSessionID"], m2["GameSessionID"])
+        self.assertNotEqual(m1["GameID"], m2["GameID"])
+        self.assertEqual(sorted(os.listdir(second)), ["built.WebP", "built.lsv"])
+
     def test_keep_time(self):
         dest = tc.copy_save(self.src, self.root, "Test Arena", "kept", keep_time=True)
         self.assertEqual(tc.read_meta(tc.find_lsv(dest))["SaveTime"], 1784838539)
