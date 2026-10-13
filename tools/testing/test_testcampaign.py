@@ -2,7 +2,9 @@
 
     python tools/testing/test_testcampaign.py        (needs pip install lz4 zstandard)
 """
+import contextlib
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -18,7 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import testcampaign as tc  # noqa: E402
 
 ATTRS = [  # (name, type id, value) of the MetaData node, in a save's order
-    ("Level", 22, "SCL_Main_A"), ("TimeStamp", 5, 4242), ("SaveGameID", 4, 7), ("GameSessionID", 22, "c" * 36),
+    ("Level", 22, "SCL_Main_A"), ("TimeStamp", 5, 4242), ("SaveGameID", 4, 7), ("Sanity", 19, True),
+    ("GameSessionID", 22, "c" * 36),
     ("GameID", 22, "g" * 36), ("Modded", 19, False), ("LeaderName", 23, "Tester"), ("SaveGameType", 1, 1),
     ("SaveTime", 24, 1784838539),
 ]
@@ -82,16 +85,43 @@ SAVEINFO = ('{\n   "Current Level" : "SCL_Main_A",\n   "Game Version" : "4.1.1.1
 
 def make_save(root, folder, stem="QuickSave_7", mformat=0, compressed=True):
     """A save folder with an LSPK package whose file list order differs from its data order, like the game's."""
-    plain = [("Globals.lsf", os.urandom(5000)), ("meta.lsf", make_lsf(mformat, compressed)),
-             (stem + ".WebP", b"RIFF" + os.urandom(300)), ("SaveInfo.json", SAVEINFO),
-             ("StorySave.bin", os.urandom(70000) * 2)]
+    plain = [(stem + ".WebP", b"RIFF" + os.urandom(300)), ("meta.lsf", make_lsf(mformat, compressed)),
+             ("StorySave.bin", os.urandom(70000) * 2), ("Globals.lsf", os.urandom(5000)),
+             ("SaveInfo.json", SAVEINFO)]
     files = [(n, 0x23, tc._compress(0x23, d), d) for n, d in plain]
     path = os.path.join(root, folder)
     os.makedirs(path)
-    tc.write_package(os.path.join(path, stem + ".lsv"), files, list_order=[2, 1, 4, 0, 3])
+    tc.write_package(os.path.join(path, stem + ".lsv"), files)
     with open(os.path.join(path, stem + ".WebP"), "wb") as f:
         f.write(b"RIFF outside")
     return path
+
+
+def game_checksum(pkg):
+    """The rule the game applies on load, written out independently of the tool."""
+    h = hashlib.md5()
+    for e in sorted(pkg.entries, key=lambda e: e.name.lower()):
+        h.update(pkg.read(e))
+    return bytes((b + 1) & 0xFF for b in h.digest())
+
+
+def data_order(pkg):
+    return [e.name for e in sorted(pkg.entries, key=lambda e: e.offset)]
+
+
+def set_sanity(lsv, value):
+    """Rewrites a synthetic package in place with meta.lsf's Sanity set to value."""
+    p = tc.Package(lsv)
+    files = []
+    for e in p.entries:
+        plain = p.read(e)
+        if e.name == "meta.lsf":
+            m = tc.Lsf(plain)
+            m.set("Sanity", value)
+            plain = m.dump()
+        files.append((e.name, e.flags, tc._compress(e.flags, plain), plain))
+    os.remove(lsv)
+    tc.write_package(lsv, files)
 
 
 def tree_digest(path):
@@ -115,6 +145,9 @@ class TestCampaign(unittest.TestCase):
         self.assertEqual([e.name for e in p.entries],
                          ["QuickSave_7.WebP", "meta.lsf", "StorySave.bin", "Globals.lsf", "SaveInfo.json"])
         self.assertEqual(p.md5, p.checksum())
+        self.assertEqual(p.md5, game_checksum(p))
+        self.assertEqual(data_order(p),
+                         ["Globals.lsf", "meta.lsf", "QuickSave_7.WebP", "SaveInfo.json", "StorySave.bin"])
         self.assertTrue(all((e.offset - tc.HEADER.size) % tc.ALIGN == 0 for e in p.entries))
         self.assertEqual(p.read(p.entry("SaveInfo.json")), SAVEINFO)
 
@@ -126,8 +159,11 @@ class TestCampaign(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(dest)), ["Act 2 end.WebP", "Act 2 end.lsv"])
         old, new = tc.Package(tc.find_lsv(self.src)), tc.Package(os.path.join(dest, "Act 2 end.lsv"))
         self.assertEqual(new.md5, new.checksum())
+        self.assertEqual(new.md5, game_checksum(new))
         self.assertEqual([e.name for e in new.entries],
                          ["Act 2 end.WebP", "meta.lsf", "StorySave.bin", "Globals.lsf", "SaveInfo.json"])
+        self.assertEqual(data_order(new),
+                         ["Act 2 end.WebP", "Globals.lsf", "meta.lsf", "SaveInfo.json", "StorySave.bin"])
         for name in ("Globals.lsf", "StorySave.bin"):
             self.assertEqual(new.raw(new.entry(name)), old.raw(old.entry(name)))
         self.assertEqual(new.read(new.entry("Act 2 end.WebP")), old.read(old.entry("QuickSave_7.WebP")))
@@ -140,6 +176,7 @@ class TestCampaign(unittest.TestCase):
         self.assertEqual((m["SaveTime"], m["SaveGameType"], m["SaveGameID"]), (1784838539, 0, -1))
         self.assertNotEqual(m["GameID"], "g" * 36)
         self.assertEqual(m["Level"], "SCL_Main_A")
+        self.assertIs(m["Sanity"], True)
         meta = tc.Lsf(new.read(new.entry("meta.lsf")))
         self.assertEqual([a[0] for a in meta.attrs], [a[0] for a in ATTRS + CHILD_ATTRS])
         self.assertEqual(meta.get("TimeStamp"), 4242)
@@ -191,6 +228,38 @@ class TestCampaign(unittest.TestCase):
         with self.assertRaises(ValueError):
             tc.copy_save(self.src, self.root, "Test Arena", "damaged", now=1000000005)
         self.assertFalse(any("damaged" in d for d in os.listdir(self.root)))
+
+    def test_rename_that_moves_the_screenshot_first(self):
+        """The game checksums files in name order, so renaming the screenshot can move it; a checksum taken in the
+        source's layout order is what made the game call copies tampered."""
+        src = make_save(self.root, "Tester-9__ZZ last", "ZZ last")
+        dest = tc.copy_save(src, self.root, "Test Arena", "AA first", now=1000000000)
+        new = tc.Package(tc.find_lsv(dest))
+        self.assertEqual(data_order(new)[0], "AA first.WebP")
+        self.assertEqual(new.md5, game_checksum(new))
+
+    def test_tamper_flag(self):
+        set_sanity(tc.find_lsv(self.src), False)
+        kept = tc.copy_save(self.src, self.root, "Test Arena", "kept", now=1000000000)
+        self.assertIs(tc.read_meta(tc.find_lsv(kept))["Sanity"], False)
+        cleared = tc.copy_save(self.src, self.root, "Test Arena", "cleared", now=1000000001, clear_tamper_flag=True)
+        new = tc.Package(tc.find_lsv(cleared))
+        self.assertIs(tc.read_meta(tc.find_lsv(cleared))["Sanity"], True)
+        self.assertEqual(new.md5, game_checksum(new))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(tc.main(["verify", tc.find_lsv(kept)]), 1)
+            self.assertEqual(tc.main(["verify", tc.find_lsv(cleared)]), 0)
+
+    def test_wrong_checksum_needs_the_clear_flag(self):
+        lsv = tc.find_lsv(self.src)
+        with open(lsv, "r+b") as f:
+            f.seek(22)
+            f.write(b"\1" * 16)
+        with self.assertRaises(ValueError):
+            tc.copy_save(self.src, self.root, "Test Arena", "refused", now=1000000000)
+        dest = tc.copy_save(self.src, self.root, "Test Arena", "repaired", now=1000000001, clear_tamper_flag=True)
+        new = tc.Package(tc.find_lsv(dest))
+        self.assertEqual(new.md5, game_checksum(new))
 
     def test_folder_number(self):
         self.assertEqual(tc.folder_number(1784838539), "282312620659")   # 2026-07-23 20:28:59 UTC
