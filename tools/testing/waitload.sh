@@ -97,8 +97,11 @@ loaded() {
     [ "$(elapsed)" -gt 6 ]; return
   fi
   [ "$mark" = marked ] || [ "$(elapsed)" -gt 6 ] || return 1
-  ev 'local ok, st = pcall(function() return tostring(Ext.Server.GetGameState()) end)
-return (_G.BG3ToolsLoadMark == nil and (not ok or st:find("Running") ~= nil)) and "loaded" or "waiting"' 2 | grep -q "=> loaded"
+  # Ext.Server is nil in the eval hook on Script Extender v33; a failed check must read as waiting, since during
+  # LoadLevel the new session already answers.
+  ev 'local get = (Ext.Utils and Ext.Utils.GetGameState) or (Ext.Server and Ext.Server.GetGameState)
+local ok, st = pcall(function() return tostring(get()) end)
+return (_G.BG3ToolsLoadMark == nil and ok and st == "Running") and "loaded" or "waiting"' 2 | grep -q "=> loaded"
 }
 
 while [ "$(elapsed)" -lt "$LIMIT" ]; do
