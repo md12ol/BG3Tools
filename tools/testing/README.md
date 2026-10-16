@@ -12,18 +12,18 @@ Use the shortcuts on test saves only; saving afterwards keeps their changes.
 | Script | Kind | What it does |
 |---|---|---|
 | `launch.ps1` | shared | start the game through Steam (skips the Larian launcher) and wait for its window |
-| `startgame.ps1` | shared | start the game (BG3_DIR or Steam) and click through its start screens to the main menu (`-Mode menu`) or Continue (`-Mode continue`), accepting Script Extender's experimental-version dialog |
+| `startgame.ps1` | shared | start the game (BG3_DIR or Steam) and click through its start screens to the main menu (`-Mode menu`) or Continue (`-Mode continue`), accepting Script Extender's experimental-version dialog; reads the game window itself, so a window covering the game does not hide the menu |
 | `restart.sh` | shared | with the game closed: install the local builds (`../install_mods.py`), `startgame.ps1`, and for `continue` wait for the load |
 | `borderless.ps1` | shared | check the game runs borderless, never windowed; `-Fix` (game closed) sets it in `graphicSettings.lsx` and keeps the old file |
 | `saves.py` | shared | list saves as the Load Game list orders them, to find a save's row by name |
 | `testcampaign.py` | shared | copy a save into a separate test campaign (its own entry in the Load Game list, every copy into the same campaign name grouped together); `list` shows the campaigns. Run with the game closed or at the main menu |
 | `loadsave.sh` | shared | load a save by folder suffix or name from the main menu or the in-game menu (scrolling the Load list to rows below its fold) and wait until it is loaded |
-| `waitload.sh` | shared | confirm a load (dev eval hook, or a signal file a mod rewrites) and accept the Mod Verification and "Different Mod Settings" dialogs |
+| `waitload.sh` | shared | confirm a load (dev eval hook, or a signal file a mod rewrites), accept the Mod Verification dialog and stop at "Different Mod Settings" (exit 3) |
 | `findrow.py` | shared | find a save's row in a Load list screenshot from a template image (loadsave.sh; needs numpy and Pillow) |
 | `ev.sh` | shared | run Lua in the game through a mod's dev eval hook and print the answer |
 | `screenshot.ps1` | shared | full-resolution screenshot of the primary screen, or of the game window only (`-Window`) |
 | `crop.ps1` | shared | JPEG of part of the screen (fractions of width and height), scaled down |
-| `ocrscreen.ps1` | shared | read the text on screen (Windows OCR): `-Find text` prints its position, `-All` every line |
+| `ocrscreen.ps1` | shared | read the text on screen (Windows OCR): `-Find text` prints its position, `-All` every line; `-Window` reads the game window even while another window covers it |
 | `waitplay.ps1` | shared | wait until a cutscene's letterbox is gone, then snapshot |
 | `front.ps1`, `focuswin.ps1`, `minwin.ps1`, `listwin.ps1` | shared | bring the game (or any window by title) to the front, minimise a window, list windows |
 | `clickseq.ps1`, `gclick.ps1`, `go.ps1`, `step.ps1` | shared | click points (`-Seq "x,y;x,y"`); gclick/go/step bring the game to the front first, go/step also snapshot |
@@ -53,6 +53,7 @@ where nothing else reaches (the start screens, the Load list, the dialogs above,
 | `BG3_SHOT_DIR` | crop, go, step, hover, waitplay, loadsave, waitload | folder for snapshots (`crop.png`, `mini.png`, `loadfail_*.png`); default `screenshots/` in this repository |
 | `BG3_TEMPLATE_DIR` | loadsave.sh | folder with `tpl_<save name>.png` row templates for findrow.py; default `BG3_SHOT_DIR` |
 | `BG3_EVAL_MOD` | waitload.sh | the mod whose dev eval hook confirms a load; default `LootAdvisor` |
+| `BG3_MODSETTINGS_YES`, `BG3_MODSETTINGS_YES_XY` | waitload.sh | `1`: answer "Different Mod Settings" with Yes instead of stopping there; `x,y`: where Yes is when OCR misses it |
 | `BG3_LOAD_SIGNAL_FILE`, `BG3_LOAD_SHOW` | waitload.sh | confirm loads by a file a mod rewrites while a level runs instead of the eval hook; lines matching `BG3_LOAD_SHOW` are printed |
 | `BG3_EXTRA_MODS` | restart.sh (install_mods.py) | more mods to install besides Loot Advisor and Build Advisor |
 | `EV_TIMEOUT` | ev.sh | seconds to wait for the answer (default 10) |
@@ -91,8 +92,10 @@ python tools/testing/cheat.py autosave off             # no autosave during a te
   release use the Devel channel (`ScriptExtenderUpdaterConfig.json` with `{"UpdateChannel": "Devel"}` in the game's
   `bin` folder). The Devel build shows an "experimental version" dialog at every start: click Accept.
 - After a pak rebuild, loading a save shows the game's "Mod Verification" dialog: click Start Game.
-- Loading a save made with another mod list enabled shows "Different Mod Settings": click Yes. `waitload.sh` clicks
-  it where OCR reads "Yes", else at 602,497 in the 1389x868 frame (`BG3_MODSETTINGS_YES_XY=x,y` overrides).
+- Loading a save made with another mod list enabled shows "Different Mod Settings". A Yes there has loaded the save
+  with every mod off, so `waitload.sh` stops at it unanswered (exit 3, with a screenshot): look at the dialog and
+  answer it yourself. `BG3_MODSETTINGS_YES=1` makes it click Yes where OCR reads "Yes", else at 602,497 in the
+  1389x868 frame (`BG3_MODSETTINGS_YES_XY=x,y` overrides).
 - The Script Extender console (`ScriptExtenderSettings.json` in `bin` with `{"CreateConsole": true}`) shows the mods'
   log lines and accepts `!la_dev` and the other console commands.
 

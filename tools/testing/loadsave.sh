@@ -1,8 +1,9 @@
 #!/bin/sh
 # loadsave.sh SAVE [menu|ingame] [EXPECT]: load a save by its folder suffix (QuickSave_38, AutoSave_12) or its name,
 # from the main menu (menu) or from the in-game menu (ingame, default), and wait until it is loaded (waitload.sh: the
-# dev eval hook, or BG3_LOAD_SIGNAL_FILE + EXPECT, see there; it also answers the Mod Verification and "Different Mod
-# Settings" dialogs). Prints "loaded SAVE (...)"; exit 2 when the save's row was not found or the load was not confirmed.
+# dev eval hook, or BG3_LOAD_SIGNAL_FILE + EXPECT, see there; it also answers the Mod Verification dialog and stops at
+# "Different Mod Settings"). Prints "loaded SAVE (...)"; exit 2 when the save's row was not found or the load was not
+# confirmed.
 # The row is found by its label with OCR (QuickSave_10 is listed as "Quicksave 10 - <region>", a named save by its
 # name), scrolling the list when the row is below its fold; a folded campaign group is unfolded first. A template image tpl_<save name>.png (lower case, spaces as _) in
 # BG3_TEMPLATE_DIR (default: BG3_SHOT_DIR) is matched instead when present (findrow.py, needs numpy and Pillow).
