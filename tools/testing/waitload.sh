@@ -4,8 +4,9 @@
 #   arm   just before the click that starts the load: marks the running game session through the dev eval hook and
 #         notes the signal file's time. --no-eval skips the mark (at the main menu there is no session to mark).
 #   wait  after the click: polls until the load is confirmed (TIMEOUT s, default 120). Meanwhile it accepts the game's
-#         Mod Verification dialog (shown after a pak rebuild changed the save's mod list) and its "Different Mod
-#         Settings" dialog (the save was made with other mods enabled), recognised by their text.
+#         Mod Verification dialog (shown after a pak rebuild changed the save's mod list), recognised by its text, and
+#         stops at its "Different Mod Settings" dialog (the save was made with other mods enabled) unless
+#         BG3_MODSETTINGS_YES=1: a Yes there has loaded a save with every mod off.
 # How a load is confirmed:
 #   BG3_LOAD_SIGNAL_FILE set (environment): a file a mod rewrites while a level runs. The load counts once the file
 #     changed after arm and every "&&"-separated extended regex of EXPECT matches one of its lines; without EXPECT,
@@ -13,7 +14,8 @@
 #   otherwise the dev eval hook (ev.sh; the mod is BG3_EVAL_MOD, default LootAdvisor, with "Dev": true): the load
 #     counts once the server answers from a new session in the Running state. Script Extender starts a fresh Lua state
 #     for each loaded save, so the mark set by arm is gone there. Without a mark it also waits 6 s first.
-# Exit 0 = confirmed, 2 = not confirmed in time (a screenshot is saved to BG3_SHOT_DIR, default ../../screenshots).
+# Exit 0 = confirmed, 2 = not confirmed in time, 3 = stopped at the "Different Mod Settings" dialog, left unanswered
+# (2 and 3 save a screenshot to BG3_SHOT_DIR, default ../../screenshots).
 here=$(cd "$(dirname "$0")" && pwd)
 SHOTS=${BG3_SHOT_DIR:-$here/../../screenshots}
 STATE=${TMPDIR:-/tmp}/bg3_waitload.state
@@ -54,16 +56,24 @@ expect_ok() {   # every "&&"-separated regex of $EXPECT matches a line of the si
   done
   return 0
 }
+snapshot() { mkdir -p "$SHOTS"; shot="$SHOTS/$1_$(date +%H%M%S).png"; ps1 crop.ps1 -Out "$(cygpath -w "$shot")" > /dev/null; }
 # Two dialogs stop the load until a button is clicked, each recognised by its title and clicked where OCR reads the
-# button, else at its usual spot: Mod Verification -> "Start Game", and "Different Mod Settings" (the save was made
-# with another mod list) -> "Yes" (BG3_MODSETTINGS_YES_XY overrides that spot). No key is known to answer either.
-# One OCR pass reads both; "x y text" lines in the 1389x868 frame.
+# button, else at its usual spot: Mod Verification -> "Start Game", and, with BG3_MODSETTINGS_YES=1 only, "Different
+# Mod Settings" (the save was made with another mod list) -> "Yes" (BG3_MODSETTINGS_YES_XY overrides that spot).
+# Without it the wait ends at that dialog, because what its Yes does to the active mod list is not known: once it
+# loaded the save with every mod off. No key is known to answer either. One OCR pass reads both; "x y text" lines in
+# the 1389x868 frame.
 load_dialog() {
   o=$(ps1 ocrscreen.ps1 -All)
   if echo "$o" | grep -qi "mod verification"; then
     what="Mod Verification dialog -> Start Game"; def=639,765
     xy=$(echo "$o" | awk 'tolower($0) ~ /start game/ {print $1 "," $2; exit}')
   elif echo "$o" | grep -qi "different mod settings"; then
+    if [ "${BG3_MODSETTINGS_YES:-}" != 1 ]; then
+      snapshot modsettings
+      echo "stopped at the game's \"Different Mod Settings\" dialog, not answered (BG3_MODSETTINGS_YES=1 clicks Yes) - screen: $shot"
+      exit 3
+    fi
     what="Different Mod Settings dialog -> Yes"; def=${BG3_MODSETTINGS_YES_XY:-602,497}
     xy=$(echo "$o" | awk 'NF == 3 && tolower($3) == "yes" {print $1 "," $2; exit}')
   else
@@ -102,8 +112,7 @@ while [ "$(elapsed)" -lt "$LIMIT" ]; do
   fi
   dialog_due && load_dialog
 done
-mkdir -p "$SHOTS"; shot="loadfail_$(date +%H%M%S).png"
-ps1 crop.ps1 -Out "$(cygpath -w "$SHOTS/$shot")" > /dev/null
+snapshot loadfail
 how="the dev eval hook never answered from a new session (\"Dev\": true for $MOD?)"
 [ -n "$SIG" ] && how="$(basename "$SIG") never changed${EXPECT:+ to match: $EXPECT}"
-echo "load NOT confirmed after $LIMIT s ($how) - screen: $SHOTS/$shot"; exit 2
+echo "load NOT confirmed after $LIMIT s ($how) - screen: $shot"; exit 2

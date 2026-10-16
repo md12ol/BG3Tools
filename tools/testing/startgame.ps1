@@ -7,19 +7,31 @@ param([string]$Mode = "continue", [int]$TimeoutSec = 180, [switch]$NoLaunch)
 # The game is started from BG3_DIR (environment: the install folder holding bin\bg3_dx11.exe) when set, else through
 # Steam; both skip the Larian launcher. -NoLaunch works on a game that is already starting or at its menu.
 # Before a launch the display mode is checked (borderless.ps1 -Fix: borderless, never windowed).
+# The screens are read from the game window itself (ocrscreen.ps1 -Window), so a window covering the game does not hide
+# them; the screen is read only when that capture has no text. A click waits until the game is in front.
 # Script Extender's Devel builds show an "experimental version" dialog at every start and the game waits until Accept
 # is clicked: it is clicked where OCR finds the button, else at its usual spot (694,497).
 . "$PSScriptRoot\lib_input.ps1"
 $names = "bg3_dx11", "bg3"
 $t0 = Get-Date
 function Log($m) { Write-Host ("{0,7:N1}s  {1}" -f ((Get-Date) - $t0).TotalSeconds, $m) }
-function Ocr { & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\ocrscreen.ps1" -All }
+function Ocr {
+  $l = @(& powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\ocrscreen.ps1" -All -Window)
+  if ($LASTEXITCODE -ne 0 -or $l.Count -eq 0) { $l = @(& powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\ocrscreen.ps1" -All) }
+  $l
+}
 function Has($lines, $text) { foreach ($l in $lines) { if ($l.ToLower().Contains($text)) { return $true } }; return $false }
 function At($lines, $text) {   # frame x,y of the first OCR line containing $text, or $null
   foreach ($l in $lines) { $x, $y, $t = $l.Split(' ', 3); if ($t -and $t.ToLower().Contains($text)) { return [int]$x, [int]$y } }
   return $null
 }
-function Front { & "$PSScriptRoot\front.ps1" | Out-Null }
+$script:behind = $false
+function Front {   # $true once the game is the foreground window; a click before that would land on the other window
+  $r = & "$PSScriptRoot\front.ps1"
+  if ("$r" -like "focused*") { return $true }
+  if (-not $script:behind) { Log "the game is not in front ($r); clicks wait for it"; $script:behind = $true }
+  return $false
+}
 
 if (-not $NoLaunch) {
   if (Get-Process -Name $names -ErrorAction SilentlyContinue) { Log "the game is already running (use -NoLaunch)"; exit 1 }
@@ -36,23 +48,24 @@ while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSec) {
   if ($p) { break }; Start-Sleep -Milliseconds 300
 }
 if (-not $p) { Log "TIMEOUT: no game window"; exit 1 }
-Front; Log "game window up"
+Front | Out-Null; Log "game window up"
 
 # Title screen -> main menu. The main menu is recognised by its "Load Game" entry; until then: accept the Script
 # Extender dialog when it shows, else click the middle of the screen ("press any key"; a click on a splash only
 # dismisses it).
 $menu = $false; $warned = $false
 while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSec) {
-  Front
+  $front = Front
   $lines = @(Ocr)
   if (Has $lines "experimental version") {
+    if (-not $front) { Start-Sleep -Milliseconds 700; continue }
     $xy = At $lines "accept"; if (-not $xy) { $xy = 694, 497 }
     FrameClick $xy[0] $xy[1]; Log "Script Extender experimental-version dialog -> Accept ($($xy -join ','))"
     Start-Sleep -Milliseconds 800; continue
   }
   if ((Has $lines "load game") -and ((Has $lines "quit") -or (Has $lines "options"))) { $menu = $true; break }
   if (-not $warned) { & "$PSScriptRoot\borderless.ps1" | Where-Object { $_ -like "WINDOWED*" } | ForEach-Object { Log $_ }; $warned = $true }
-  FrameClick 694 600
+  if ($front) { FrameClick 694 600 }
   Start-Sleep -Milliseconds 700
 }
 if (-not $menu) { Log "TIMEOUT: main menu not recognised"; exit 1 }
@@ -63,10 +76,10 @@ if ($Mode -ne "continue") { exit 0 }
 $start = Get-Date
 while (((Get-Date) - $start).TotalSeconds -lt 60) {
   $xy = At $lines "continue"; if (-not $xy) { $xy = 307, 386 }
-  FrameClick $xy[0] $xy[1]; Start-Sleep -Milliseconds 1500
+  if (Front) { FrameClick $xy[0] $xy[1] }; Start-Sleep -Milliseconds 1500
   $lines = @(Ocr)
   if (Has $lines "mod verification") { Log "Continue clicked: Mod Verification dialog up (waitload.sh accepts it)"; exit 0 }
+  if (Has $lines "different mod settings") { Log "Continue clicked: Different Mod Settings dialog up (waitload.sh stops at it)"; exit 0 }
   if (-not (Has $lines "load game")) { Log "Continue clicked: loading the latest save"; exit 0 }
-  Front
 }
 Log "TIMEOUT: the main menu stayed up after Continue"; exit 1

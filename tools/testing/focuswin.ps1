@@ -1,6 +1,7 @@
 param([string]$TitleLike = "Script Extender")
 # focuswin.ps1 [-TitleLike text]: restore and bring to the front the first window whose title contains the text
-# (default: the Script Extender console). Prints "focused <handle>" or "not found" (exit 1).
+# (default: the Script Extender console). Prints "focused <handle>", "not in front <handle>" when Windows kept another
+# window in front (exit 2), or "not found" (exit 1).
 Add-Type @"
 using System; using System.Runtime.InteropServices; using System.Text;
 public class FW {
@@ -11,6 +12,11 @@ public class FW {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool r);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool attach);
 }
 "@
 $found = $null
@@ -20,4 +26,13 @@ $found = $null
 if (-not $found) { "not found"; exit 1 }
 [FW]::ShowWindow($found, 9) | Out-Null
 [FW]::SetForegroundWindow($found) | Out-Null
+# Windows refuses SetForegroundWindow to a process that does not own the foreground (the call only flashes the
+# taskbar); sharing the foreground window's input queue for the call lifts that.
+if ([FW]::GetForegroundWindow() -ne $found) {
+  $fg = [FW]::GetWindowThreadProcessId([FW]::GetForegroundWindow(), [IntPtr]::Zero); $me = [FW]::GetCurrentThreadId()
+  [FW]::AttachThreadInput($me, $fg, $true) | Out-Null
+  [FW]::BringWindowToTop($found) | Out-Null; [FW]::SetForegroundWindow($found) | Out-Null
+  [FW]::AttachThreadInput($me, $fg, $false) | Out-Null
+}
+if ([FW]::GetForegroundWindow() -ne $found) { "not in front $found"; exit 2 }
 "focused $found"
